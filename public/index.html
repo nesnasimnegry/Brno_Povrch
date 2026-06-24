@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BRNO PODZEMÍ / POVRCH — koncerty, kluby & akce v Brně</title>
+<meta name="description" content="Co se děje v Brně — underground i mainstream scéna na jednom místě. Koncerty, kluby, párty, festivaly a mapa scény. Vyber si mód a najdi program na dnešní noc." />
+<link rel="canonical" href="https://snabba.netlify.app/" />
+<meta name="theme-color" content="#0c0b0a" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0b0a'/%3E%3Cpath d='M16 7l9 19H7z' fill='%23ecc400'/%3E%3C/svg%3E" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="BRNO PODZEMÍ / POVRCH" />
+<meta property="og:url" content="https://snabba.netlify.app/" />
+<meta property="og:locale" content="cs_CZ" />
+<meta property="og:title" content="BRNO PODZEMÍ / POVRCH — mapa scény" />
+<meta property="og:description" content="Co se děje v Brně: underground i mainstream. Akce, kluby a mapa scény na jednom místě." />
+<meta property="og:image" content="https://images.unsplash.com/photo-1545128485-c400e7702796?auto=format&fit=crop&w=1200&h=630&q=70" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="BRNO PODZEMÍ / POVRCH" />
+<meta name="twitter:description" content="Mapa brněnské scény — underground i mainstream." />
+<meta name="twitter:image" content="https://images.unsplash.com/photo-1545128485-c400e7702796?auto=format&fit=crop&w=1200&h=630&q=70" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0b0a; --fg:#efeae0; --primary:#ecc400; --primary-fg:#161208;
+    --accent:#c5362a; --glow:rgba(236,196,0,.10);
+    --card:#161412; --secondary:#1d1a16; --muted:#8d877c; --border:#2a2723;
+    --mono:"JetBrains Mono",ui-monospace,monospace; --disp:"Space Grotesk",system-ui,sans-serif;
+  }
+  body.mode-public{ --primary:#37d4e6; --primary-fg:#04222a; --accent:#ff5aa6; --glow:rgba(55,212,230,.13); }
+  *{box-sizing:border-box;margin:0;padding:0;border-radius:0}
+  html,body{background:var(--bg);color:var(--fg);font-family:var(--disp);overflow-x:clip}
+  body{-webkit-font-smoothing:antialiased;transition:background .3s;
+    background-image:radial-gradient(at 18% 8%, var(--glow) 0, transparent 50%),radial-gradient(at 82% 92%, var(--glow) 0, transparent 55%);min-height:100vh;}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--primary);color:var(--primary-fg)}
+  img,iframe{display:block;max-width:100%}
+  .mono{font-family:var(--mono)} .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+  .stroke{-webkit-text-stroke:1px var(--fg);color:transparent}
+  .accent{color:var(--accent)} .pri{color:var(--primary)} .mut{color:var(--muted)}
+  header.site{position:sticky;top:0;z-index:50;background:rgba(12,11,10,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 20px;max-width:1180px;margin:0 auto}
+  .brand{font-family:var(--mono);font-size:12px;letter-spacing:.26em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+  .dot{width:8px;height:8px;background:var(--primary);display:inline-block}
+  nav.main{display:flex;gap:20px;font-family:var(--mono);font-size:12px;letter-spacing:.2em}
+  nav.main a{padding:4px 0;border-bottom:2px solid transparent;color:#cfc9bd}
+  nav.main a:hover{color:var(--primary)} nav.main a.active{color:var(--fg);border-bottom-color:var(--primary)}
+  .right{display:flex;gap:9px;align-items:center}
+  .modebtn{background:none;border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;letter-spacing:.13em;padding:6px 10px;cursor:pointer;white-space:nowrap}
+  .modebtn:hover{background:var(--accent);color:#fff}
+  .lang{display:flex;border:1px solid var(--border)}
+  .lang button{background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.1em;padding:6px 8px;border:none;cursor:pointer}
+  .lang button.on{background:var(--primary);color:var(--primary-fg);font-weight:700}
+  .menu-btn{display:none;background:none;border:1px solid var(--border);color:var(--fg);font-family:var(--mono);font-size:13px;padding:6px 9px;cursor:pointer}
+  .btn{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.22em;font-weight:700;padding:15px 22px;cursor:pointer;border:2px solid transparent;transition:.15s}
+  .btn-pri{background:var(--primary);color:var(--primary-fg)} .btn-pri:hover{background:var(--accent);color:#fff}
+  .btn-out{border-color:#5a554c;color:var(--fg)} .btn-out:hover{border-color:var(--primary)}
+  .hero{position:relative;min-height:86vh;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+  .hero-bg{position:absolute;inset:0;background:linear-gradient(180deg, rgba(12,11,10,.12) 0%, rgba(12,11,10,.5) 58%, var(--bg) 100%),radial-gradient(120% 85% at 62% 22%, var(--glow), transparent 62%),linear-gradient(115deg, color-mix(in oklab,var(--accent) 16%,transparent), transparent 42%);}
+  .hero-bg::after{content:"";position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")}
+  .hero-inner{position:relative;z-index:2;padding:0 20px 58px;max-width:1180px;margin:0 auto;width:100%}
+  .tag{font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--primary);margin-bottom:16px;animation:flick 7s infinite}
+  @keyframes flick{0%,17%,21%,53%,57%,100%{opacity:1}19%,55%{opacity:.4}}
+  h1.title{font-weight:700;text-transform:uppercase;line-height:.84;letter-spacing:-.02em;font-size:clamp(52px,11.5vw,170px)}
+  .lead{max-width:640px;margin-top:24px;font-size:clamp(15px,1.6vw,19px);color:#d7d1c6;line-height:1.6}
+  .hero-cta{margin-top:28px;display:flex;flex-wrap:wrap;gap:12px}
+  .marq{border-top:2px solid var(--border);border-bottom:2px solid var(--border);background:repeating-linear-gradient(45deg,var(--primary) 0 14px, #0c0b0a 14px 28px);padding:2px 0}
+  .marq-inner{background:var(--bg);padding:11px 0;overflow:hidden;white-space:nowrap}
+  .marq-track{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:#cfc9bd;animation:scroll 38s linear infinite}
+  .marq-track span{padding:0 26px}.marq-track .s{color:var(--accent)}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  section.blk{padding:62px 0}
+  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--primary);margin-bottom:12px}
+  h2.big{font-weight:700;text-transform:uppercase;line-height:.95;letter-spacing:-.01em;font-size:clamp(32px,6vw,72px)}
+  .sec-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:26px}
+  .sec-head .note{font-family:var(--mono);font-size:12px;color:var(--muted);max-width:320px}
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .pill{font-family:var(--mono);font-size:11px;letter-spacing:.18em;padding:8px 13px;border:2px solid var(--border);color:#cfc9bd;background:none;cursor:pointer}
+  .pill:hover{border-color:#6c665b} .pill.on{background:var(--primary);color:var(--primary-fg);border-color:var(--primary);font-weight:700}
+  .filters{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-bottom:20px}
+  .filters label{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted);display:block;margin-bottom:6px}
+  select,input,textarea{font-family:var(--mono);font-size:13px;background:#15130f;border:2px solid var(--border);color:var(--fg);padding:11px 12px;width:100%}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--primary)}
+  .cards{display:grid;gap:16px}
+  .daydiv{grid-column:1/-1;font-family:var(--mono);font-size:12px;letter-spacing:.26em;color:var(--primary);padding:10px 0 2px;border-top:1px solid var(--border);margin-top:8px}
+  .card{display:grid;grid-template-columns:120px 1fr;border:2px solid var(--border);background:rgba(22,20,18,.7);transition:.15s}
+  .card:hover{border-color:var(--primary)}
+  .card .date{border-right:2px solid var(--border);background:rgba(29,26,22,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px 8px}
+  .card .wd{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--muted)}
+  .card .dd{font-weight:700;font-size:50px;line-height:1} .card .mo{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--primary);margin-top:2px}
+  .card .body{padding:18px}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+  .gtag{font-family:var(--mono);font-size:10px;letter-spacing:.18em;font-weight:700;padding:3px 7px;background:var(--primary);color:var(--primary-fg)}
+  .gtag.feat{background:var(--accent);color:#fff} .meta{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--muted)}
+  .card h3{font-weight:700;font-size:clamp(20px,2.4vw,28px);text-transform:uppercase;line-height:1.05;letter-spacing:-.01em}
+  .card .blurb{color:#cfc9bd;font-size:14px;margin-top:8px;line-height:1.5}
+  .card .ven{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:14px}
+  .card .lin{margin-top:10px;font-family:var(--mono);font-size:12px;color:#b7b1a6;line-height:1.5}
+  .back{font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--muted)}.back:hover{color:var(--primary)}
+  .detail-grid{display:grid;grid-template-columns:180px 1fr;gap:28px;border-top:2px solid var(--border);border-bottom:2px solid var(--border);padding:28px 0;margin-top:24px}
+  .detail-date{background:rgba(29,26,22,.6);border:2px solid var(--border);text-align:center;padding:20px}
+  .detail-date .dd{font-weight:700;font-size:58px;line-height:1}
+  .dl-row{margin-bottom:16px}.dl-row .k{font-family:var(--mono);font-size:10px;letter-spacing:.28em;color:var(--muted);margin-bottom:4px}.dl-row .v{font-family:var(--mono);font-size:14px}
+  .lineup li{font-family:var(--mono);font-size:14px;border-left:2px solid var(--accent);padding:5px 0 5px 16px;margin-top:8px;list-style:none}
+  .map{margin-top:32px;border:2px solid var(--border)}.map iframe{width:100%;height:340px;filter:grayscale(1) contrast(1.15) invert(.92) hue-rotate(180deg)}
+  .venues{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+  .venue{border:2px solid var(--border);background:rgba(22,20,18,.7);padding:20px}.venue:hover{border-color:var(--primary)}
+  .venue h3{font-weight:700;text-transform:uppercase;font-size:21px;letter-spacing:-.01em}
+  .venue .d{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .venue .addr{font-family:var(--mono);font-size:12px;color:#b7b1a6;margin-top:10px}
+  .venue .cnt{margin-top:12px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--primary)}
+  .form{max-width:640px;display:grid;gap:16px}.form .row{display:grid;gap:6px}.form .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .notice{border:2px solid var(--border);padding:14px;font-family:var(--mono);font-size:13px;color:#cfc9bd}.ok{border-color:var(--primary);color:var(--primary)}
+  .man-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:34px;font-family:var(--mono);font-size:14px;line-height:1.6;color:#cfc9bd}
+  .man-grid .t{color:var(--primary);font-weight:700;margin-bottom:8px}
+  .admin-row{border:2px solid var(--border);padding:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .admin-row .info{font-family:var(--mono);font-size:13px}.admin-row .acts{display:flex;gap:8px}
+  .mini{font-family:var(--mono);font-size:11px;letter-spacing:.15em;padding:8px 12px;border:2px solid var(--border);background:none;color:var(--fg);cursor:pointer}
+  .mini.good:hover{border-color:var(--primary);color:var(--primary)}.mini.bad:hover{border-color:var(--accent);color:var(--accent)}
+  footer.site{border-top:2px solid var(--border);margin-top:30px}
+  .foot{display:grid;grid-template-columns:2fr 1fr 1fr;gap:34px;padding:52px 20px;max-width:1180px;margin:0 auto}
+  .foot h4{font-weight:700;text-transform:uppercase;font-size:25px}.foot p{color:#b7b1a6;font-size:14px;margin-top:10px;max-width:380px}
+  .foot .col .h{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--primary);margin-bottom:12px}
+  .foot .col a,.foot .col span{display:block;font-family:var(--mono);font-size:13px;color:#b7b1a6;margin-bottom:8px}.foot .col a:hover{color:var(--fg)}
+  .news{display:flex;gap:8px;margin-top:16px;max-width:420px;flex-wrap:wrap}.news input{flex:1;min-width:180px}
+  .foot-strip{background:repeating-linear-gradient(45deg,var(--primary) 0 14px,#0c0b0a 14px 28px);height:14px}
+  .copy{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:18px 20px;max-width:1180px;margin:0 auto;font-family:var(--mono);font-size:10px;letter-spacing:.26em;color:var(--muted)}
+  @media(max-width:820px){
+    nav.main{display:none}.menu-btn{display:block}
+    nav.main.open{display:flex;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;background:#0e0d0b;border-bottom:1px solid var(--border);padding:8px 20px}
+    nav.main.open a{padding:12px 0;border-bottom:1px solid var(--border)}
+    .card{grid-template-columns:78px 1fr}.card .dd{font-size:34px}
+    .detail-grid{grid-template-columns:1fr}.man-grid{grid-template-columns:1fr}.foot{grid-template-columns:1fr}.two{grid-template-columns:1fr !important}
+    .brand span:last-child{display:none}
+    select,input,textarea{font-size:16px}
+    .filters{flex-direction:column;align-items:stretch;gap:14px}.filters>div{width:100%}
+    .venues{grid-template-columns:1fr}
+  }
+  /* === visual polish === */
+  @keyframes auroraDrift{0%{transform:translate(-8%,-5%) scale(1)}50%{transform:translate(7%,6%) scale(1.25)}100%{transform:translate(-8%,-5%) scale(1)}}
+  @keyframes grainShift{0%{transform:translate(0,0)}25%{transform:translate(-4%,3%)}50%{transform:translate(3%,-3%)}75%{transform:translate(-2%,4%)}100%{transform:translate(0,0)}}
+  @keyframes scanMove{from{background-position:0 0}to{background-position:0 100%}}
+  @keyframes glowPulse{0%,100%{text-shadow:0 0 16px color-mix(in oklab,var(--primary) 40%,transparent)}50%{text-shadow:0 0 36px color-mix(in oklab,var(--primary) 75%,transparent)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+  @keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .hero-photo{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.62;filter:grayscale(1) contrast(1.08) brightness(.95)}
+  body.mode-underground .hero-photo{background-image:url("https://images.unsplash.com/photo-1545128485-c400e7702796?auto=format&fit=crop&w=1600&q=70");filter:contrast(1.1) saturate(1.2) brightness(.9);opacity:.66}
+  body.mode-public .hero-photo{background-image:url("https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&w=1600&q=70")}
+  .hero-aurora{position:absolute;inset:-20%;pointer-events:none;opacity:.55;filter:blur(42px);animation:auroraDrift 18s ease-in-out infinite;
+    background:radial-gradient(40% 40% at 30% 35%, color-mix(in oklab,var(--primary) 38%,transparent),transparent 70%),radial-gradient(45% 45% at 70% 62%, color-mix(in oklab,var(--accent) 30%,transparent),transparent 70%)}
+  .scanlines{position:absolute;inset:0;pointer-events:none;opacity:.22;background:repeating-linear-gradient(0deg,rgba(0,0,0,.55) 0 1px,transparent 1px 3px);background-size:100% 4px;animation:scanMove 9s linear infinite}
+  .vignette{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 180px 50px rgba(0,0,0,.72)}
+  .hero-bg::after{animation:grainShift 1.1s steps(4) infinite}
+  h1.title .pri{animation:glowPulse 4.5s ease-in-out infinite}
+  #app .hero,#app section.blk{animation:viewIn .4s ease both}
+  .cards .card,.venues .venue{animation:fadeUp .5s ease both}
+  .cards .card:nth-child(2),.venues .venue:nth-child(2){animation-delay:.06s}
+  .cards .card:nth-child(3),.venues .venue:nth-child(3){animation-delay:.12s}
+  .cards .card:nth-child(4),.venues .venue:nth-child(4){animation-delay:.18s}
+  .cards .card:nth-child(5),.venues .venue:nth-child(5){animation-delay:.24s}
+  .cards .card:nth-child(n+6),.venues .venue:nth-child(n+6){animation-delay:.3s}
+  .card{transition:transform .16s,border-color .16s,box-shadow .16s}
+  .card:hover{transform:translateY(-3px);box-shadow:0 8px 0 -4px color-mix(in oklab,var(--primary) 55%,transparent),0 18px 40px rgba(0,0,0,.5)}
+  .venue{transition:transform .16s,border-color .16s,box-shadow .16s}
+  .venue:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(0,0,0,.5)}
+  .btn{position:relative;overflow:hidden}
+  .btn-pri::after{content:"";position:absolute;top:0;left:-130%;width:55%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.4),transparent);transform:skewX(-20deg)}
+  .btn-pri:hover::after{left:150%;transition:left .55s ease}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  #leafmap{background:#0c0b0a}
+  #leafmap .leaflet-tooltip.vlabel{background:#0c0b0a;color:#efeae0;border:1px solid #2a2723;border-radius:0;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;box-shadow:none;padding:2px 6px;white-space:nowrap;display:none}
+  #leafmap.zoomed .leaflet-tooltip.vlabel{display:block}
+  #leafmap .leaflet-tooltip.vlabel::before{display:none}
+  #leafmap .leaflet-popup-content-wrapper,#leafmap .leaflet-popup-tip{background:#161412;color:#efeae0;border:1px solid #2a2723;border-radius:0;box-shadow:none}
+  #leafmap .leaflet-popup-content{font-family:var(--mono);font-size:12px;line-height:1.5}
+  #leafmap .leaflet-popup-content a{color:var(--primary)}
+  #leafmap a.leaflet-popup-close-button{color:#8d877c}
+  @keyframes photoIn{from{opacity:0}}
+  .hero-photo{animation:photoIn 1.1s ease}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .map-loading{display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--muted)}
+  .map-loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;display:inline-block;margin-right:10px;animation:spin .8s linear infinite}
+  @media(max-width:560px){
+    .bar{gap:8px;padding:11px 14px}
+    .modebtn{font-size:10px;padding:6px 7px;letter-spacing:.05em}
+    .lang button{padding:6px 6px}
+    h1.title{font-size:clamp(46px,15vw,86px)}
+    .hero-inner{padding-bottom:42px}
+    section.blk{padding:48px 0}
+    .detail-grid{gap:18px}
+    .pill{padding:10px 14px}
+    .btn{letter-spacing:.12em;padding:14px 16px}
+    .detail-date{padding:14px}.detail-date .dd{font-size:44px}
+    .map iframe{height:260px}
+    .card .body{padding:14px}
+  }
+  @keyframes kenburns{from{transform:scale(1.06)}to{transform:scale(1.16)}}
+  .hero-photo{animation:photoIn 1.2s ease,kenburns 28s ease-in-out infinite alternate;transform-origin:60% 40%}
+  .card{position:relative}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--primary);opacity:0;transition:opacity .15s;z-index:1}
+  .card:hover::before{opacity:1}
+  .venue{position:relative;overflow:hidden}
+  .venue::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:0;transition:opacity .15s}
+  .venue:hover::before{opacity:1}
+  #app.m-out{animation:mOut .18s ease-in forwards}
+  #app.m-in{animation:mIn .46s cubic-bezier(.2,.7,.2,1)}
+  @keyframes mOut{to{opacity:0;filter:blur(12px) brightness(1.85);transform:scale(.99)}}
+  @keyframes mIn{from{opacity:0;filter:blur(18px) brightness(.4);transform:scale(1.03)}to{opacity:1;filter:none;transform:none}}
+  #intro{position:fixed;inset:0;z-index:300;display:flex;background:#0c0b0a}
+  #intro.hide{opacity:0;pointer-events:none;transition:opacity .55s ease}
+  .ihalf{position:relative;flex:1;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:flex .55s cubic-bezier(.7,0,.3,1)}
+  .ihalf::before{content:"";position:absolute;inset:0;background-size:cover;background-position:center;filter:grayscale(.45) brightness(.45);transition:transform .6s ease,filter .5s ease}
+  .ihalf::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,11,10,.9),rgba(12,11,10,.3))}
+  .iug::before{background-image:url("https://images.unsplash.com/photo-1545128485-c400e7702796?auto=format&fit=crop&w=1400&q=70")}
+  .ipub::before{background-image:url("https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&w=1400&q=70")}
+  .ihalf:hover{flex:1.7}
+  .ihalf:hover::before{filter:grayscale(0) brightness(.72);transform:scale(1.06)}
+  .ihalf-in{position:relative;z-index:2;text-align:center;padding:24px;max-width:90%}
+  .ikick{font-family:var(--mono);font-size:12px;letter-spacing:.3em;margin-bottom:14px}
+  .iug .ikick{color:#ecc400}.ipub .ikick{color:#37d4e6}
+  .iword{font-family:var(--disp);font-weight:700;text-transform:uppercase;font-size:clamp(24px,4.4vw,66px);line-height:.92;letter-spacing:-.02em;color:#efeae0;white-space:nowrap}
+  .iug:hover .iword{text-shadow:0 0 44px rgba(236,196,0,.55)}.ipub:hover .iword{text-shadow:0 0 44px rgba(55,212,230,.55)}
+  .idesc{margin-top:14px;color:#cfc9bd;font-family:var(--mono);font-size:13px;letter-spacing:.05em}
+  .ienter{margin-top:26px;font-family:var(--mono);font-size:12px;letter-spacing:.25em;border:2px solid rgba(239,234,224,.35);display:inline-block;padding:12px 22px;color:#efeae0;opacity:0;transform:translateY(10px);transition:.35s ease}
+  .ihalf:hover .ienter{opacity:1;transform:none}.iug:hover .ienter{border-color:#ecc400;color:#ecc400}.ipub:hover .ienter{border-color:#37d4e6;color:#37d4e6}
+  @media(max-width:760px){
+   #intro{flex-direction:column;height:100dvh}
+   .ihalf{flex:1;min-height:0}
+   .ihalf::before{filter:grayscale(.25) brightness(.62)}
+   .ihalf:active::before{filter:grayscale(0) brightness(.8);transform:scale(1.04)}
+   .ihalf-in{padding:18px;max-width:94%}
+   .ikick{font-size:11px;letter-spacing:.18em;margin-bottom:10px}
+   .iword{font-size:clamp(40px,12vw,72px)}
+   .idesc{font-size:12px;margin-top:10px}
+   .ienter{opacity:1;transform:none;margin-top:18px;padding:13px 26px;font-size:13px}
+   .iug .ienter{border-color:#ecc400;color:#ecc400}
+   .ipub .ienter{border-color:#37d4e6;color:#37d4e6}
+  }
+</style>
+</head>
+<body class="mode-underground">
+<div id="intro">
+ <div class="ihalf iug" data-mode="underground"><div class="ihalf-in"><div class="ikick">◤ NEZÁVISLÁ SCÉNA</div><div class="iword">UNDERGROUND</div><div class="idesc">Kluby, koncerty, raves.</div><div class="ienter">VSTOUPIT →</div></div></div>
+ <div class="ihalf ipub" data-mode="public"><div class="ihalf-in"><div class="ikick">◤ MAINSTREAM SCÉNA</div><div class="iword">POVRCH</div><div class="idesc">Velké koncerty, festivaly, diskotéky.</div><div class="ienter">VSTOUPIT →</div></div></div>
+</div>
+<header class="site"><div class="bar">
+  <a class="brand" href="#/"><span class="dot"></span><span>BRNO_SCÉNA</span></a>
+  <nav class="main" id="nav"></nav>
+  <div class="right"><button class="modebtn" id="modeBtn"></button><div class="lang" id="lang"></div><button class="menu-btn" id="menuBtn">≡</button></div>
+</div></header>
+<div id="app"></div>
+<footer class="site" id="footer"></footer>
+<form name="akce" data-netlify="true" netlify-honeypot="bot-field" hidden><input type="hidden" name="form-name" value="akce"><input name="title"><input name="date"><input name="time"><input name="venue"><input name="genre"><input name="price"><input name="ticket"><input name="lineup"><textarea name="desc"></textarea><input name="mode"><input name="bot-field"></form>
+<form name="newsletter" data-netlify="true" netlify-honeypot="bot-field" hidden><input type="hidden" name="form-name" value="newsletter"><input name="contact"><input name="bot-field"></form>
+<script>
+const VENUES=[
+ {id:"fleda",mode:"public",name:"Fléda",district:"Ponava",address:"Štefánikova 266/24, Brno",desc:"Jeden z nejstarších a nejznámějších brněnských klubů (od 90. let), koncerty i klubové noci napříč žánry."},
+ {id:"sono",mode:"public",name:"Sono Music Club",district:"Veveří",address:"Veveří 113, Brno",desc:"Klub propojený se známým nahrávacím studiem Sono — velký sál pro koncerty i taneční noci."},
+ {id:"melodka",mode:"public",name:"Melodka",district:"Pisárky",address:"Pisárecká 7a, Brno",desc:"Klub původem z Králova Pole, který se přestěhoval na novou adresu v Pisárkách; koncerty i klubové akce."},
+ {id:"metro",mode:"public",name:"Metro Music Bar",district:"Brno-střed",address:"Poštovská 6, Brno",desc:"Hudební bar kousek od náměstí Svobody — rock, alternativa a DJ noci do rána."},
+ {id:"semilasso",mode:"public",name:"KC Semilasso",district:"Královo Pole",address:"Palackého třída 126, Brno",desc:"Kulturní dům v Králově Poli — větší koncerty, plesy a společenské akce."},
+ {id:"starapekarna",mode:"public",name:"Stará Pekárna",district:"Ponava",address:"Štefánikova 8, Brno",desc:"Dlouholetá hudební kavárna a klub, doma pro jazz, folk, world a alternativu naživo."},
+ {id:"teepee",mode:"public",name:"Teepee",district:"Bystrc",address:"Přístavní 1179/57, Brno",desc:"Klub a bar přímo u Brněnské přehrady — letní párty, grilování a terasa nad vodou."},
+ {id:"vankovka",mode:"public",name:"Galerie Vaňkovka",district:"Trnitá",address:"Ve Vaňkovce 1, Brno",desc:"Nákupní galerie s venkovním pódiem v areálu vedle Vaňkovky — letní festivaly a open-air koncerty zdarma."},
+ {id:"spilberk",mode:"public",name:"Špilberk",district:"Brno-střed",address:"Špilberk 1, Brno",desc:"Hrad nad městem s letní open-air scénou — koncerty a festivaly v nádvoří a parku."},
+ {id:"amfik",mode:"public",name:"Amfiteátr Řečkovice",district:"Řečkovice",address:"Bývalý pivovar, Řečkovice, Brno",desc:"Letní amfiteátr v areálu bývalého řečkovického pivovaru, určený pro open-air koncerty."},
+ {id:"pulpit",mode:"underground",name:"Pul.pit",district:"Brno-střed",address:"Kapucínské nám. 6, Brno",desc:"Nezávislý klub elektronické hudby (od 2022), který provozuje parta z bývalého klubu VHS na Pekařské."},
+ {id:"kabinet",mode:"underground",name:"Kabinet múz",district:"Brno-střed",address:"Sukova 4, Brno",desc:"Komorní sklepní klub u centra s malou kapacitou — alternativní a experimentální koncerty."},
+ {id:"industra",mode:"underground",name:"Industra",district:"Zábrdovice",address:"Lazaretní 925/9, Brno",desc:"Nezávislé kreativní centrum v industriálním srdci Brna — umění, design, hudba i párty."},
+ {id:"sklenka",mode:"underground",name:"Skleněná louka",district:"Veveří",address:"Kounicova 23, Brno",desc:"Experimentálně laděný kulturní prostor na Kounicově — hudba, divadlo a výstavy s přesahem."},
+ {id:"cabaret",mode:"public",name:"Cabaret des Péchés",district:"Brno-střed",address:"Dominikánské nám. 2 (Palác Jalta), Brno",desc:"Kabaret a koncertní sál v Paláci Jalta na Dominikánském náměstí — show, koncerty i klubové noci."},
+ {id:"vibe",mode:"underground",name:"Vibe Club",district:"Brno-střed",address:"Starobrněnská 20, Brno",desc:"Malá sklepní jeskyně v centru — house a techno do rána. Tmavá, intimní, tanec bez pózy.",web:"https://www.facebook.com/VibeClubBrno/"},
+ {id:"fraktal",mode:"underground",name:"Fraktal",district:"Ponava",address:"Štefánikova 24, Brno",desc:"Menší klub elektronické a techno scény v budově Flédy — syrovější, klubovější sourozenec velkého sálu."},
+ {id:"enter",mode:"underground",name:"ENTER Club",district:"Pisárky",address:"Křížkovského 22, Brno",desc:"Klubová techno scéna u výstaviště — tvrdší linie, dlouhé noci a hostující DJs."},
+ {id:"mosilana",mode:"underground",name:"Mosilana Hub",district:"Trnitá",address:"Křenová 19, Brno",desc:"Industriál v bývalé textilní továrně Mosilana — rave v halách, beton a syrový prostor."},
+ {id:"malaamerika",mode:"underground",name:"Malá Amerika",district:"Staré Brno",address:"Hybešova 1, Brno",desc:"Tajemná nedokončená nádražní hala pod viaduktem — industriální kulisa pro akce a party.",web:"https://www.facebook.com/mala.amerika.brno/"},
+ {id:"vodojemy",mode:"underground",name:"Vodojemy Žlutý kopec",district:"Staré Brno",address:"Žlutý kopec, Brno",desc:"Podzemní vodojemy jako cihlové katedrály pod zemí — výjimečné open-air i temné underground akce."},
+ {id:"exit",mode:"underground",name:"Exit Club",district:"Brno-střed",address:"náměstí Svobody 17, Brno",desc:"Sklepní klub pod domem Pánů z Lipé na náměstí Svobody (od 2015) — hlavně techno a electronic, špičkový VOID zvuk a videomapping.",web:"https://linktr.ee/Exitclubbrno"},
+ {id:"artbar",mode:"underground",name:"ArtBar Druhý pád",district:"Veveří",address:"Štefánikova 1, Brno",desc:"Multikulturní underground centrum ve sklepě u Štefánikovy (od 2017) — koncerty, berlínský electronic, divadlo i stand-up.",web:"https://www.artbar.club/"},
+ {id:"perpetuum",mode:"underground",name:"Perpetuum",district:"Brno-střed",address:"Rooseveltova 9, Brno",desc:"Klub elektronické a taneční hudby v centru — house, techno a dlouhé noci."},
+ {id:"sibir",mode:"underground",name:"Kulturní centrum Sibiř",district:"Husovice",address:"Dukelská 50, Brno",desc:"Alternativní kulturní centrum v Husovicích — koncerty, párty a komunitní akce."},
+ {id:"radost",mode:"underground",name:"Radost",district:"Zábrdovice",address:"Cejl 254/52, Brno",desc:"Koncertní a klubová hala na Cejlu — větší akce v syrové části města."},
+ {id:"boby",mode:"public",name:"Zoner Boby Hall",district:"Ponava",address:"Sportovní 2a, Brno",desc:"Kultovní komplex z 90. let (Bobycentrum) — taneční noci Apokalypsa s DJs, velký sál, muzikály i párty."},
+ {id:"twofaces",mode:"public",name:"Two Faces",district:"Brno-střed",address:"Biskupská 1, Brno",desc:"Diskotéka u Petrova s 20letou tradicí — dva parkety, čtyři bary a římský bazén v interiéru."},
+ {id:"sedmnebe",mode:"public",name:"7. nebe",district:"Brno-střed",address:"Jánská 9, Brno",desc:"Stálice brněnského clubbingu — futuristicko-industriální interiér, dvě stage, Student Night od středy do soboty."},
+ {id:"pitkin",mode:"public",name:"Pitkin",district:"Královo Pole",address:"Srbská, Brno",desc:"Klub u Slovanského náměstí — retro a oldies noci i latinskoamerický styl."},
+ {id:"charlieshat",mode:"public",name:"Charlie's Hat",district:"Brno-střed",address:"Kobližná, Brno",desc:"Legendární sklepní podnik u náměstí Svobody (od 1995) — hudbu pouští nadšenci a znalci, ne DJs."},
+ {id:"vnclub",mode:"public",name:"VN Club",district:"Brno-střed",address:"Jánská, Brno",desc:"Velkorysý klub v centru (4 patra) — taneční parket, shisha i privátní karaoke."}, {id:"leitner",mode:"public",name:"Leitner Club",district:"Staré Brno",address:"Leitnerova 2, Brno",desc:"Komorní klub na Starém Brně — koncerty a klubové akce."},
+ {id:"typos",mode:"public",name:"Typos",district:"Brno-střed",address:"centrum, Brno",desc:"Moderní klub se špičkovou audio a světelnou technikou, zaměřený na elektronickou hudbu."},
+ {id:"alterna",mode:"underground",name:"Klub Alterna",district:"Veveří",address:"Kounicova 48, Brno",desc:"Jazzový a alternativní klub na Kounicově — koncerty i občasné taneční beaty."}, {id:"caribic",mode:"public",name:"Caribic Club",district:"Brno-střed",address:"Běhounská 2/22, Brno",desc:"Jeden z největších brněnských klubů (od 2004) — RnB, house a dance noci na více parketech."},
+ {id:"yacht",mode:"public",name:"Yacht Music Club",district:"Královo Pole",address:"Kolejní 6, Brno",desc:"Studentský a hudební klub u vysokoškolských kolejí — párty, koncerty a levné pivo."},
+ {id:"tabarin",mode:"public",name:"Tabarin Club",district:"Brno-střed",address:"Divadelní 3, Brno",desc:"Hudební klub v centru města — taneční noci hlavně o víkendu."},
+ {id:"discoxxl",mode:"public",name:"Disco XXL",district:"Brno-střed",address:"Kolište 71, Brno",desc:"Velká diskotéka na Kolišti — mainstreamové taneční hity pro široký publikum."},
+ {id:"musiclab",mode:"public",name:"Music Lab",district:"Brno-střed",address:"Opletalova 1, Brno",desc:"Klubová scéna pro živou hudbu a koncerty kousek od centra."}
+];
+const V=Object.fromEntries(VENUES.map(v=>[v.id,v]));
+const EVENTS=[
+ {id:"e04",mode:"public",title:"Robert Křesťan & Druhá Tráva",date:"2026-07-23",time:"20:00",venue:"amfik",genres:["KONCERT","FOLK"],price:"vstupenky GoOut",ticket:"https://goout.net/en/brno/events/lezjyvlkk/",featured:true,lineup:["Robert Křesťan","Druhá Tráva"],blurb:"Folkový večer v amfiteátru bývalého pivovaru.",desc:"Open-air koncert Roberta Křesťana a Druhé Trávy v Řečkovicích."},
+ {id:"i1",mode:"underground",title:"LAGRIMAS (USA)",date:"2026-10-28",time:"20:00",venue:"kabinet",genres:["KONCERT","PUNK"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/",featured:true,lineup:["LAGRIMAS"],blurb:"Screamo / melodic crust z USA ve sklepním Kabinetu.",desc:"Koncert LAGRIMAS (USA) — screamo / melodic crust — v Kabinetu múz. (z IG @kabinet_muz)"},
+ {id:"i2",mode:"public",title:"White Girl Music Open Air",date:"2026-07-17",time:"20:00",venue:"teepee",genres:["PÁRTY"],price:"předprodej eventlook.cz",ticket:"https://www.eventlook.cz/",featured:true,lineup:[],blurb:"Open air párty u Brněnské přehrady.",desc:"White Girl Music — open air @ Teepee (Přístavní). Předprodej eventlook.cz. (z IG @bestevents.cz)"},
+ {id:"i3",mode:"underground",title:"Kosmetik Institut + Midnight Swimmers",date:"2026-06-26",time:"20:00",venue:"artbar",genres:["KONCERT"],price:"vstupenky smsticket",ticket:"https://www.smsticket.cz/vstupenky/70715-koncert-na-baterky-beneficni-akce-koridor-ua-artbar-brno-kosmetik-institut-midnight-swimmers",featured:false,lineup:["Kosmetik Institut","Midnight Swimmers"],blurb:"Koncert na baterky — benefiční akce Koridor UA.",desc:"Kosmetik Institut + Midnight Swimmers v ArtBaru — benefiční koncert (Koridor UA)."},
+ {id:"i4",mode:"underground",title:"Pondělníci (akusticky) + Street Comedy",date:"2026-08-12",time:"20:00",venue:"artbar",genres:["KONCERT"],price:"vstupenky GoOut",ticket:"https://goout.net/cs/pondelnici-akusticky+street-comedy/szurhjy/",featured:false,lineup:["Pondělníci"],blurb:"Koncert a stand-up v ArtBaru.",desc:"Pondělníci akusticky + Street Comedy — koncert a stand-up v ArtBaru."},
+ {id:"i5",mode:"underground",title:"Buchty (live)",date:"2026-06-21",time:"20:00",venue:"kabinet",genres:["KONCERT"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/program",featured:false,lineup:["Buchty"],blurb:"Buchty živě v Kabinetu.",desc:"Koncert Buchty v Kabinetu múz."},
+ {id:"i6",mode:"underground",title:"Knives (UK) + Split The Needle + Crna Zuč (SRB)",date:"2026-06-24",time:"20:00",venue:"kabinet",genres:["KONCERT","PUNK"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/program",featured:true,lineup:["Knives (UK)","Split The Needle","Crna Zuč (SRB)"],blurb:"Mezinárodní punk/hardcore večer.",desc:"Knives (UK), Split The Needle a Crna Zuč (SRB) v Kabinetu múz."},
+ {id:"i7",mode:"underground",title:"Sulfuric Cautery (USA) + Morgue Breath + Retorsion (HU)",date:"2026-06-29",time:"20:00",venue:"kabinet",genres:["KONCERT","PUNK"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/program",featured:false,lineup:["Sulfuric Cautery (USA)","Morgue Breath (USA)","Retorsion (HU)","Strage di Stato"],blurb:"Grind/death noc s US a evropskými kapelami.",desc:"Sulfuric Cautery, Morgue Breath, Retorsion a Strage di Stato v Kabinetu múz."},
+ {id:"i8",mode:"underground",title:"Dwarves (USA) + Travex (SK)",date:"2026-07-02",time:"20:00",venue:"kabinet",genres:["KONCERT","PUNK"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/program",featured:true,lineup:["Dwarves (USA)","Travex (SK)"],blurb:"Punkrocková legenda Dwarves z USA.",desc:"Dwarves (USA) + Travex (SK) v Kabinetu múz."},
+ {id:"i9",mode:"underground",title:"Poison Ruin (USA) + Sněť + Kien",date:"2026-07-16",time:"20:00",venue:"kabinet",genres:["KONCERT","PUNK"],price:"vstupenky GoOut",ticket:"https://www.kabinetmuz.cz/program",featured:false,lineup:["Poison Ruin (USA)","Sněť","Kien"],blurb:"Post-punk / dark punk z USA.",desc:"Poison Ruin (USA), Sněť a Kien v Kabinetu múz."},
+ {id:"i10",mode:"underground",title:"Ice Hokku (ISR) + DJ Mushka",date:"2026-06-25",time:"20:00",venue:"alterna",genres:["KONCERT"],price:"vstupenky Alterna",ticket:"https://www.alterna.cz/program/ice-hokku-isr-dj-mushka/",featured:true,lineup:["Ice Hokku (ISR)","DJ Mushka"],blurb:"Live-looping akustiky a elektroniky.",desc:"Ice Hokku (ISR) a DJ Mushka v Alterně."},
+ {id:"i11",mode:"underground",title:"Janny Richter + Housekeepers",date:"2026-10-15",time:"20:00",venue:"alterna",genres:["KONCERT"],price:"vstupenky Alterna",ticket:"https://www.alterna.cz/program/janny-richter-housekeepers/",featured:false,lineup:["Janny Richter","Housekeepers"],blurb:"Americana, post-punk a 80s electro.",desc:"Janny Richter a Housekeepers v Alterně (A2stage)."},
+ {id:"i12",mode:"underground",title:"Lesní zvěř + Rabbit slow",date:"2026-11-05",time:"20:00",venue:"alterna",genres:["KONCERT"],price:"vstupenky Alterna",ticket:"https://www.alterna.cz/program/lesni-zver-rabbit-slow/",featured:false,lineup:["Lesní zvěř","Rabbit slow"],blurb:"Nu-jazz, improvizace a elektronika.",desc:"Lesní zvěř a Rabbit slow v Alterně."},
+ {id:"i13",mode:"underground",title:"MAOK — Hudba vnitřních světů",date:"2026-06-22",time:"17:30",venue:"vodojemy",genres:["KONCERT","AMBIENT"],price:"vstupenky TIC",ticket:"https://vodojemybrno.cz/vodojemyart/maok-hudba-vnitrnich-svetu/",featured:true,lineup:["MAOK"],blurb:"Meditativní koncert v podzemních vodojemech.",desc:"MAOK — Hudba vnitřních světů v podzemních vodojemech (VodojemyArt)."},
+ {id:"i14",mode:"underground",title:"DROWNED SIGNAL",date:"2026-06-29",time:"19:00",venue:"vodojemy",genres:["KONCERT"],price:"vstupenky TIC",ticket:"https://vodojemybrno.cz/vodojemyart/drowned-signal/",featured:false,lineup:["Drowned Signal"],blurb:"Koncert v podzemních vodojemech.",desc:"DROWNED SIGNAL ve Vodojemech Žlutý kopec (VodojemyArt)."},
+ {id:"i15",mode:"public",title:"Matamar na hrad 360° [Open Air]",date:"2026-06-26",time:"17:00",venue:"spilberk",genres:["RAVE","TECHNO"],price:"vstupenky smsticket",ticket:"https://www.smsticket.cz/vstupenky/69917-matamar-na-hrad-360-open-air-hrad-spilberk-brno",featured:true,lineup:["Matamar"],blurb:"Open-air techno na Špilberku (pořádá EXIT).",desc:"Matamar na hrad 360° — open-air na Špilberku."},
+ {id:"i16",mode:"public",title:"Balkan Bashavel open-air: Malalata + SuzieSmooth + Libuška Bachratá",date:"2026-06-24",time:"18:00",venue:"spilberk",genres:["PÁRTY"],price:"vstupenky GoOut",ticket:"https://goout.net/cs/listky/balkan-bashavel-open-air-malalata+suziesmooth+libuska-bachrata/jsrlb/",featured:true,lineup:["Malalata","SuzieSmooth","Libuška Bachratá"],blurb:"Balkánský brass open-air na nádvoří Špilberku.",desc:"Balkan Bashavel — open-air párty na Špilberku. (GoOut)"},
+ {id:"i17",mode:"public",title:"Only Fire (HR)",date:"2026-07-05",time:"20:00",venue:"fleda",genres:["KONCERT"],price:"vstupenky Fléda",ticket:"https://www.fleda.cz/event/2421/",featured:false,lineup:["Only Fire (HR)"],blurb:"Explozivní beaty z Chorvatska.",desc:"Only Fire (HR) ve Flédě. (program Fléda)"},
+ {id:"i18",mode:"public",title:"New Model Army (UK)",date:"2026-07-10",time:"20:00",venue:"fleda",genres:["KONCERT","PUNK"],price:"vstupenky Fléda",ticket:"https://www.fleda.cz/event/2302/",featured:true,lineup:["New Model Army"],blurb:"Post-punková legenda Justina Sullivana.",desc:"New Model Army (UK) ve Flédě. (program Fléda)"},
+ {id:"i19",mode:"public",title:"Paolo Fresu & Omar Sosa feat. Nguyên Lê",date:"2026-08-06",time:"20:00",venue:"sono",genres:["JAZZ"],price:"vstupenky Sono",ticket:"https://www.sono.cz/event/zahajovaci-koncert-paolo-fresu-omar-sosa-feat-nguyen-le/",featured:true,lineup:["Paolo Fresu","Omar Sosa","Nguyên Lê"],blurb:"Zahajovací koncert JazzFestBrno.",desc:"Paolo Fresu & Omar Sosa feat. Nguyên Lê — JazzFestBrno v Sono. (program Sono)"},
+ {id:"i20",mode:"public",title:"JFB: Snarky Puppy",date:"2026-09-13",time:"20:00",venue:"sono",genres:["JAZZ"],price:"vstupenky Sono",ticket:"https://www.sono.cz/event/jfb-snarky-puppy/",featured:true,lineup:["Snarky Puppy"],blurb:"Grammy jazz-fusion kolektiv.",desc:"Snarky Puppy — JazzFestBrno v Sono. (program Sono)"},
+ {id:"i21",mode:"public",title:"Camouflage",date:"2026-09-05",time:"20:00",venue:"sono",genres:["KONCERT"],price:"vstupenky Sono",ticket:"https://www.sono.cz/event/camouflage/",featured:false,lineup:["Camouflage"],blurb:"Němečtí synth-pop matadoři.",desc:"Camouflage (DE) v Sono. (program Sono)"},
+ {id:"i22",mode:"public",title:"Horkýže Slíže — Čarovné tour 2026",date:"2026-10-14",time:"20:00",venue:"sono",genres:["KONCERT","PUNK"],price:"vstupenky Sono",ticket:"https://www.sono.cz/event/horkyze-slize-carovne-tour-2026/",featured:false,lineup:["Horkýže Slíže"],blurb:"Slovenská punkrocková mašina.",desc:"Horkýže Slíže — Čarovné tour v Sono. (program Sono)"},
+ {id:"i23",mode:"public",title:"Vaňkovka Fest: Alice & Dan Bárta + Fields of Grain",date:"2026-06-23",time:"19:00",venue:"vankovka",genres:["KONCERT"],price:"zdarma",ticket:"https://www.vankovkafest.cz/program",featured:true,lineup:["Fields of Grain","Alice & Dan Bárta"],blurb:"Open-air zdarma — pop/soul večer u Vaňkovky.",desc:"Vaňkovka Fest den 1 — Fields of Grain a Alice & Dan Bárta. Vstup zdarma. (vankovkafest.cz)"},
+ {id:"i24",mode:"public",title:"Vaňkovka Fest: Adam Mišík + Kojo + Cédric",date:"2026-06-24",time:"19:00",venue:"vankovka",genres:["KONCERT"],price:"zdarma",ticket:"https://www.vankovkafest.cz/program",featured:true,lineup:["Richiman & Groove Nice (KOR)","Cédric","Kojo","Adam Mišík"],blurb:"Open-air zdarma — pop/rock/funk u Vaňkovky.",desc:"Vaňkovka Fest den 2 — Adam Mišík, Kojo, Cédric, Richiman & Groove Nice. Vstup zdarma. (vankovkafest.cz)"},
+ {id:"i25",mode:"public",title:"Vaňkovka Fest: Paulie Garand + Rest + Smack One & P Money",date:"2026-06-25",time:"19:00",venue:"vankovka",genres:["KONCERT","HIPHOP"],price:"zdarma",ticket:"https://www.vankovkafest.cz/program",featured:false,lineup:["DJ Kenny Rough","Paulie Garand & Kenny Rough","Rest & DJ Aka","Rest & Paulie","Smack One & P Money (UK)","DJ Proove"],blurb:"Open-air zdarma — hip-hop noc u Vaňkovky.",desc:"Vaňkovka Fest den 3 — Paulie Garand, Rest, Smack One & P Money (UK), after party DJ Proove. Vstup zdarma. (vankovkafest.cz)"},
+ {id:"i26",mode:"public",title:"Konec školního roku — Teepee Brno",date:"2026-06-26",time:"20:00",venue:"teepee",genres:["PÁRTY"],price:"předprodej eventlook.cz",ticket:"https://www.eventlook.cz/udalosti/konec-skolniho-roku-teepee-brno-fzxxrk/",featured:true,lineup:[],blurb:"Open-air párty na konec školního roku u přehrady.",desc:"Konec školního roku — open-air párty @ Teepee (Přístavní). Pořádá Best Events, předprodej eventlook.cz. (eventlook.cz)"}
+];
+const ALL_GENRES=["TECHNO","HOUSE","TRANCE","DNB","ACID","HIPHOP","SWING","INDIE","KONCERT","JAZZ","PUNK","NOISE","DIY","RAVE","ART"];
+const MODECOPY={
+ underground:{cs:{word:"UNDERGROUND",tag:"◤ NEZÁVISLÁ SCÉNA · UNDERGROUND KLUBY ◢",lead:"Mapa nezávislé a alternativní scény v Brně — underground kluby, koncerty a párty mimo mainstream. Ručně vybíráno, žádný algoritmus."},en:{word:"UNDERGROUND",tag:"◤ INDEPENDENT SCENE · UNDERGROUND CLUBS ◢",lead:"A map of Brno's independent and alternative scene — underground clubs, gigs and parties off the mainstream. Hand-picked, no algorithm."}},
+ public:{cs:{word:"POVRCH",tag:"◤ MAINSTREAM SCÉNA · KLUBY & FESTIVALY ◢",lead:"Mapa povrchové scény Brna — velké kluby, koncerty, festivaly a diskotéky. Lístky online, otevřeno všem."},en:{word:"SURFACE",tag:"◤ MAINSTREAM SCENE · CLUBS & FESTIVALS ◢",lead:"A map of Brno's mainstream scene — big clubs, concerts, festivals and discos. Tickets online, open to everyone."}}
+};
+const I18N={
+ cs:{nav_akce:"AKCE",nav_kluby:"KLUBY",nav_pridat:"PŘIDAT",nav_manifest:"MANIFEST",hero_cta:"PROGRAM →",hero_cta2:"MANIFEST",week_kick:"◤ 01 // TENTO TÝDEN",week_t1:"Nejbližší",week_t2:"noci.",week_hint:"Program podle zvoleného módu. Přepni nahoře mezi PUBLIC a UNDERGROUND.",all_events:"VŠECHNY AKCE →",f_when:"KDY",f_venue:"KLUB",when_all:"vše",when_week:"tento týden",when_weekend:"víkend",when_up:"nadcházející",venue_all:"všechny kluby",empty:"// v tomhle módu/kategorii zatím nic — zkus přepnout mód",doors:"ZAČÁTEK",price:"VSTUP",venue:"MÍSTO",lineup:"LINE-UP",tickets:"VSTUPENKY →",cal:"DO KALENDÁŘE",onmap:"NA MAPĚ",share:"SDÍLET",back:"← zpět na akce",shared:"Odkaz zkopírován",detail_not:"// akce nenalezena",kluby_kick:"◤ KLUBY & VENUES",kluby_t:"Kde se to děje.",upcoming_n:"akcí v plánu",add_kick:"◤ PŘIDAT AKCI",add_t:"Pošli nám noc.",add_hint:"Akce se přidá do právě zvoleného módu a čeká na schválení kurátora.",l_title:"NÁZEV AKCE",l_date:"DATUM",l_time:"ZAČÁTEK",l_venue:"KLUB / MÍSTO",l_genre:"ŽÁNR",l_price:"VSTUP",l_lineup:"LINE-UP (čárkou)",l_ticket:"ODKAZ NA VSTUPENKY",l_desc:"POPIS",submit:"ODESLAT KE SCHVÁLENÍ →",add_ok:"Díky. Akce čeká na schválení — objeví se po odsouhlasení v daném módu.",man_kick:"◤ 02 // MANIFEST",man_t1:"Není za tím firma.",man_t2:"Jen lidi, co sem chodí.",man1t:"/ 01 DVA SVĚTY",man1b:"Někdy chceš velký koncert a lístek dopředu — to je POVRCH. Jindy sklepní klub, kde dopředu nevíš, co přijde — to je PODZEMÍ. Obojí je Brno, přepni si nahoře podle nálady.",man2t:"/ 02 RUČNĚ VYBÍRÁNO",man2b:"Žádný robot. Procházíme weby klubů, GoOut a Instagramy a vybíráme akce ručně. Když něco chybí nebo je špatně, napiš nám — opravíme to.",man3t:"/ 03 CHOĎ VEN",man3b:"My ti akci najdeme, zbytek je na tobě. Přestaň scrollovat, vezmi kámoše a vyraz. Scéna žije z lidí v sále, ne z lajků.",news_h:"Naskoč na list.",news_p:"Jedna zpráva týdně podle tvého módu — tipy na akce v Brně.",news_ph:"+420 / e-mail",join:"JOIN →",news_ok:"Hotovo — jsi na listu.",f_nav:"/ NAVIGACE",f_else:"/ JINDE",submit_show:"Přidej akci",admin:"Správa",copy1:"© 2026 BRNO SCÉNA",copy2:"POVRCH I PODZEMÍ. JEDNO MĚSTO.",admin_t:"Správa",admin_pending:"Čeká na schválení",admin_none:"// nic nečeká",approve:"SCHVÁLIT",reject:"ZAMÍTNOUT",admin_subs:"Odběratelé",admin_gate:"Heslo:",admin_wrong:"Špatné heslo.",all:"VŠE"},
+ en:{nav_akce:"EVENTS",nav_kluby:"VENUES",nav_pridat:"SUBMIT",nav_manifest:"MANIFESTO",hero_cta:"PROGRAM →",hero_cta2:"MANIFESTO",week_kick:"◤ 01 // THIS WEEK",week_t1:"Next",week_t2:"nights.",week_hint:"Program follows the selected mode. Switch PUBLIC / UNDERGROUND at the top.",all_events:"ALL EVENTS →",f_when:"WHEN",f_venue:"VENUE",when_all:"all",when_week:"this week",when_weekend:"weekend",when_up:"upcoming",venue_all:"all venues",empty:"// nothing in this mode/category yet — try switching mode",doors:"DOORS",price:"ENTRY",venue:"VENUE",lineup:"LINE-UP",tickets:"TICKETS →",cal:"ADD TO CALENDAR",onmap:"ON MAP",share:"SHARE",back:"← back to events",shared:"Link copied",detail_not:"// event not found",kluby_kick:"◤ CLUBS & VENUES",kluby_t:"Where it happens.",upcoming_n:"upcoming events",add_kick:"◤ SUBMIT EVENT",add_t:"Send us a night.",add_hint:"The event is added to the current mode and awaits curator approval.",l_title:"EVENT TITLE",l_date:"DATE",l_time:"START",l_venue:"VENUE",l_genre:"GENRE",l_price:"ENTRY",l_lineup:"LINE-UP (comma)",l_ticket:"TICKET LINK",l_desc:"DESCRIPTION",submit:"SUBMIT FOR REVIEW →",add_ok:"Thanks. The event awaits approval — it appears in that mode once approved.",man_kick:"◤ 02 // MANIFESTO",man_t1:"No company behind this.",man_t2:"Just people who go out.",man1t:"/ 01 TWO WORLDS",man1b:"Sometimes you want a big show with a ticket booked ahead — that's SURFACE. Sometimes a basement club where you've no idea what's coming — that's UNDERGROUND. Both are Brno, switch up top depending on your mood.",man2t:"/ 02 HAND-PICKED",man2b:"No robots. We go through venue sites, GoOut and Instagram and pick the events by hand. If something's missing or wrong, tell us — we'll fix it.",man3t:"/ 03 GO OUT",man3b:"We find the gig, the rest is on you. Stop scrolling, grab a friend and head out. The scene lives off people in the room, not likes.",news_h:"Get on the list.",news_p:"One message a week per mode — what's on in Brno.",news_ph:"+420 / e-mail",join:"JOIN →",news_ok:"Done — you're on the list.",f_nav:"/ NAVIGATE",f_else:"/ ELSEWHERE",submit_show:"Submit a show",admin:"Admin",copy1:"© 2026 BRNO SCENE",copy2:"SURFACE & UNDERGROUND. ONE CITY.",admin_t:"Admin",admin_pending:"Pending approval",admin_none:"// nothing pending",approve:"APPROVE",reject:"REJECT",admin_subs:"Subscribers",admin_gate:"Password:",admin_wrong:"Wrong password.",all:"ALL"}
+};
+let LANG=localStorage.getItem("bu_lang")||"cs";
+let MODE=localStorage.getItem("bu_mode")||"underground";
+const t=k=>(I18N[LANG][k]??k);
+const mc=()=>MODECOPY[MODE][LANG];
+const load=(k,def)=>{try{return JSON.parse(localStorage.getItem(k))??def}catch(e){return def}};
+const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+const getAll=()=>EVENTS.concat(load("bu_approved",[]));
+const modeEvents=()=>getAll().filter(e=>e.mode===MODE);
+const modeVenues=()=>VENUES.filter(v=>v.mode===MODE);
+const getPending=()=>load("bu_pending",[]);
+function fmtDate(ds,time){const d=new Date(ds+"T"+(time||"20:00")+":00");const loc=LANG==="cs"?"cs-CZ":"en-GB";
+ return {wd:d.toLocaleDateString(loc,{weekday:"short"}).toUpperCase().replace(".",""),day:d.toLocaleDateString(loc,{day:"2-digit"}),mo:d.toLocaleDateString(loc,{month:"short"}).toUpperCase().replace(".",""),full:d.toLocaleDateString(loc,{weekday:"long",day:"numeric",month:"long"})};}
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const todayISO=()=>new Date().toISOString().slice(0,10);
+const inWeek=ds=>{const diff=(new Date(ds)-new Date())/86400000;return diff>=-1&&diff<=7;};
+const isWeekend=ds=>{const g=new Date(ds).getDay();return g===5||g===6||g===0;};
+function eventCard(e){const v=V[e.venue],d=fmtDate(e.date,e.time),img=VIMG[e.venue],dstyle=img?` style="background-image:linear-gradient(rgba(12,11,10,.45),rgba(12,11,10,.78)),url('${img}');background-size:cover;background-position:center"`:"";
+ const badges=e.genres.map(g=>`<span class="gtag">${g}</span>`).join("")+(e.featured?`<span class="gtag feat">★</span>`:"");
+ return `<a class="card" href="#/akce/${e.id}"><div class="date"${dstyle}><div class="wd">${d.wd}</div><div class="dd">${d.day}</div><div class="mo">${d.mo}</div></div>
+ <div class="body"><div class="badges">${badges}<span class="meta">· ${e.time} · ${esc(e.price)}</span></div><h3>${esc(e.title)}</h3>
+ <div class="blurb">${esc(e.blurb)}</div><div class="ven"><span><span class="accent">▲</span> ${esc(v?v.name:"")}</span><span>${esc(v?v.district:"")}</span></div>
+ <div class="lin">${e.lineup.map(esc).join("  /  ")}</div></div></a>`;}
+function viewHome(){const list=modeEvents().filter(e=>e.date>=todayISO()).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5);const c=mc();
+ return `<section class="hero"><div class="hero-photo"></div><div class="hero-bg"></div><div class="hero-aurora"></div><div class="scanlines"></div><div class="vignette"></div><div class="hero-inner"><div class="tag">${c.tag}</div>
+ <h1 class="title"><span class="stroke">BRNO</span><br><span class="pri">${esc(c.word)}</span></h1>
+ <p class="lead">${c.lead}</p><div class="hero-cta"><a class="btn btn-pri" href="#/akce">${t("hero_cta")}</a></div></div></section>
+ <div class="marq"><div class="marq-inner"><div class="marq-track">${marqText()}${marqText()}</div></div></div>
+ <section class="blk"><div class="wrap"><div class="sec-head"><div><div class="kick">${t("week_kick")}</div><h2 class="big">${t("week_t1")}<br><span class="pri">${t("week_t2")}</span></h2></div><div class="note">${t("week_hint")}</div></div>
+ <div class="cards">${list.map(eventCard).join("")||`<div class="notice">${t("empty")}</div>`}</div>
+ <div style="margin-top:24px"><a class="btn btn-out" href="#/akce">${t("all_events")}</a></div></div></section>`;}
+function marqText(){const items=MODE==="underground"?(LANG==="cs"?["ALTERNATIVA","UNDERGROUND KLUBY","DIY SCÉNA","KONCERTY & PÁRTY","VEZMI ŠPUNTY","RESPEKTUJ PROSTOR"]:["INDEPENDENT","UNDERGROUND CLUBS","DIY SCENE","GIGS & PARTIES","BRING EARPLUGS","RESPECT THE SPACE"]):(LANG==="cs"?["MAINSTREAM","VELKÉ KONCERTY","FESTIVALY","DISKOTÉKY","KLUBOVÉ NOCI","LÍSTKY ONLINE"]:["MAINSTREAM","BIG CONCERTS","FESTIVALS","DISCOS","CLUB NIGHTS","TICKETS ONLINE"]);
+ return items.map(i=>`<span>${i}</span><span class="s">✶</span>`).join("");}
+let FILT={genre:"ALL",when:"all",venue:"all"};
+function genreList(){return ["ALL",...Array.from(new Set(modeEvents().flatMap(e=>e.genres)))];}
+function viewAkce(){return `<section class="blk"><div class="wrap"><div class="kick">${t("nav_akce")} · ${MODE.toUpperCase()}</div>
+ <h2 class="big" style="margin-bottom:22px">Program</h2>
+ <div class="pills" id="genrePills">${genreList().map(g=>`<button class="pill ${FILT.genre===g?"on":""}" data-g="${g}">${g==="ALL"?t("all"):g}</button>`).join("")}</div>
+ <div class="filters"><div><label>${t("f_when")}</label><select id="fWhen">
+ <option value="all" ${FILT.when==="all"?"selected":""}>${t("when_all")}</option><option value="week" ${FILT.when==="week"?"selected":""}>${t("when_week")}</option>
+ <option value="weekend" ${FILT.when==="weekend"?"selected":""}>${t("when_weekend")}</option><option value="up" ${FILT.when==="up"?"selected":""}>${t("when_up")}</option></select></div>
+ <div><label>${t("f_venue")}</label><select id="fVenue"><option value="all">${t("venue_all")}</option>${modeVenues().map(v=>`<option value="${v.id}" ${FILT.venue===v.id?"selected":""}>${esc(v.name)}</option>`).join("")}</select></div></div>
+ <div class="cards" id="akceList">${renderAkceList()}</div></div></section>`;}
+function renderAkceList(){let list=modeEvents().filter(e=>e.date>=todayISO());
+ if(FILT.genre!=="ALL")list=list.filter(e=>e.genres.includes(FILT.genre));
+ if(FILT.venue!=="all")list=list.filter(e=>e.venue===FILT.venue);
+ if(FILT.when==="week")list=list.filter(e=>inWeek(e.date));
+ if(FILT.when==="weekend")list=list.filter(e=>isWeekend(e.date));
+ list.sort((a,b)=>a.date.localeCompare(b.date));
+ if(!list.length)return `<div class="notice">${t("empty")}</div>`;
+ const tdy=todayISO(),lab=LANG==="cs"?["DNES","TENTO TÝDEN","POZDĚJI"]:["TODAY","THIS WEEK","LATER"];
+ const bk=ds=>ds===tdy?0:((new Date(ds)-new Date(tdy))/86400000<=7?1:2);
+ let out="",cur=-1;
+ list.forEach(e=>{const b=bk(e.date);if(b!==cur){cur=b;out+=`<div class="daydiv">◤ ${lab[b]}</div>`;}out+=eventCard(e);});
+ return out;}
+function viewDetail(id){const e=getAll().find(x=>x.id===id);
+ if(!e)return `<section class="blk"><div class="wrap"><a class="back" href="#/akce">${t("back")}</a><div class="notice" style="margin-top:20px">${t("detail_not")}</div></div></section>`;
+ const v=V[e.venue],d=fmtDate(e.date,e.time);
+ const showMap=v&&(!v.address||!v.address.includes("SMS"))&&!/lom|ruina/i.test(v.address||"");
+ const mapQ=v?encodeURIComponent(v.name+", Brno"):"Brno";
+ return `<section class="blk"><div class="wrap"><a class="back" href="#/akce">${t("back")}</a>
+ <div class="badges" style="margin-top:18px">${e.genres.map(g=>`<span class="gtag">${g}</span>`).join("")}${e.featured?`<span class="gtag feat">★</span>`:""}<span class="meta">· ${e.mode.toUpperCase()}</span></div>
+ <h1 class="title" style="font-size:clamp(38px,7vw,86px);margin-top:10px">${esc(e.title)}</h1>
+ <div class="detail-grid"><div class="detail-date"><div class="wd mono mut">${d.wd}</div><div class="dd">${d.day}</div><div class="mo mono pri">${d.mo}</div><div class="mono mut" style="margin-top:8px;font-size:12px">${e.time}</div></div>
+ <div><div class="dl-row"><div class="k">${t("doors")}</div><div class="v">${d.full} · ${e.time}</div></div>
+ <div class="dl-row"><div class="k">${t("price")}</div><div class="v">${esc(e.price)}</div></div>
+ ${v?`<div class="dl-row"><div class="k">${t("venue")}</div><div class="v"><span class="accent">▲</span> ${esc(v.name)} <span class="mut">— ${esc(v.address)} · ${esc(v.district)}</span></div></div>`:""}</div></div>
+ ${e.desc?`<p class="lead" style="margin-top:24px">${esc(e.desc)}</p>`:""}
+ <div style="margin-top:28px"><div class="kick">◤ ${t("lineup")}</div><ul class="lineup">${e.lineup.map(l=>`<li>${esc(l)}</li>`).join("")}</ul></div>
+ <div style="margin-top:26px;display:flex;flex-wrap:wrap;gap:12px">${e.ticket?`<a class="btn btn-pri" href="${e.ticket==="#"?"#/akce/"+e.id:esc(e.ticket)}" ${e.ticket==="#"?"":'target="_blank" rel="noopener"'}>${t("tickets")}</a>`:""}${COORDS[e.venue]?`<a class="btn btn-out" href="#/mapa/${e.venue}">▲ ${t("onmap")}</a>`:""}<button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
+ ${showMap?`<div class="map"><iframe loading="lazy" src="https://maps.google.com/maps?q=${mapQ}&z=14&output=embed"></iframe></div>`:""}</div></section>`;}
+const SPACES=["industra","sklenka","mosilana","malaamerika","vodojemy","sibir","spilberk","amfik","vankovka","semilasso"];
+function venueCard(v){const n=modeEvents().filter(e=>e.venue===v.id&&e.date>=todayISO()).length;
+ return `<a class="venue" href="#/klub/${v.id}"><h3>${esc(v.name)}</h3><div class="addr">▲ ${esc(v.address)} · ${esc(v.district)}</div><div class="cnt">${n} ${t("upcoming_n")} →</div></a>`;}
+function viewKluby(){const clubs=modeVenues().filter(v=>!SPACES.includes(v.id)),spaces=modeVenues().filter(v=>SPACES.includes(v.id));
+ const grp=(label,arr)=>arr.length?`<div class="kick" style="margin:34px 0 14px">◤ ${label} <span class="mut">(${arr.length})</span></div><div class="venues">${arr.map(venueCard).join("")}</div>`:"";
+ return `<section class="blk"><div class="wrap"><div class="kick">${t("kluby_kick")} · ${MODE.toUpperCase()}</div>
+ <h2 class="big" style="margin-bottom:6px">${t("kluby_t")}</h2>
+ ${grp(LANG==="cs"?"KLUBY":"CLUBS",clubs)}${grp("VENUES",spaces)}</div></section>`;}
+function viewVenue(id){const v=V[id];
+ if(!v)return `<section class="blk"><div class="wrap"><a class="back" href="#/kluby">${LANG==="cs"?"← zpět na kluby":"← back to venues"}</a><div class="notice" style="margin-top:20px">// 404</div></div></section>`;
+ const evs=modeEvents().filter(e=>e.venue===id&&e.date>=todayISO()).sort((a,b)=>a.date.localeCompare(b.date));
+ const showMap=!/SMS|lom|ruina/i.test(v.address||"");const _c=COORDS[id];const mapQ=_c?_c[0]+","+_c[1]:encodeURIComponent(v.name+", Brno");
+ return `<section class="blk"><div class="wrap">
+  <a class="back" href="#/kluby">${LANG==="cs"?"← zpět na kluby":"← back to venues"}</a>
+  <div class="kick" style="margin-top:16px">◤ ${v.mode.toUpperCase()}</div>
+  <h1 class="title" style="font-size:clamp(38px,7vw,82px)">${esc(v.name)}</h1>
+  ${VIMG[id]?`<div style="position:relative;margin-top:18px;max-width:460px;border:1px solid #2a2724;border-radius:10px;overflow:hidden"><img src="${VIMG[id]}" alt="${esc(v.name)}" loading="lazy" style="display:block;width:100%;aspect-ratio:3/2;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,11,10,.38),transparent 60%);pointer-events:none"></div></div>`:""}
+  <p class="lead" style="margin-top:18px">${esc(v.desc)}</p>
+  <div class="dl-row" style="margin-top:16px"><div class="k">${t("venue")}</div><div class="v"><span class="accent">▲</span> ${esc(v.address)} · ${esc(v.district)}</div></div>
+  ${v.web?`<div class="dl-row"><div class="k">web</div><div class="v"><a href="${esc(v.web)}" target="_blank" rel="noopener">${LANG==="cs"?"web / sítě ↗":"website ↗"}</a></div></div>`:""}
+  <div class="dl-row"><div class="k">${LANG==="cs"?"navigace":"directions"}</div><div class="v"><a href="https://www.google.com/maps/search/?api=1&query=${mapQ}" target="_blank" rel="noopener">${LANG==="cs"?"otevřít v Mapách ↗":"open in Maps ↗"}</a></div></div>
+  <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:12px">${COORDS[id]?`<a class="btn btn-out" href="#/mapa/${id}">▲ ${t("onmap")}</a>`:""}<button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
+  ${showMap?`<div class="map"><iframe loading="lazy" src="https://maps.google.com/maps?q=${mapQ}&z=15&output=embed"></iframe></div>`:""}
+  <h2 class="big" style="font-size:30px;margin:36px 0 18px">${LANG==="cs"?"Nadcházející akce":"Upcoming events"}</h2>
+  <div class="cards">${evs.length?evs.map(eventCard).join(""):`<div class="notice">${t("empty")}</div>`}</div>
+ </div></section>`;}
+const COORDS={fleda:[49.2099,16.6033],sono:[49.2097,16.5887],melodka:[49.1926,16.5649],metro:[49.1947,16.6101],semilasso:[49.2272,16.5930],starapekarna:[49.2066,16.6016],teepee:[49.2245,16.5232],vankovka:[49.1883,16.6145],spilberk:[49.1948,16.5993],amfik:[49.2546,16.5807],pulpit:[49.1915,16.6092],kabinet:[49.1956,16.6125],industra:[49.2035,16.6297],sklenka:[49.2096,16.6004],cabaret:[49.1942,16.6063],vibe:[49.1926,16.6063],fraktal:[49.2099,16.6033],enter:[49.1872,16.5845],mosilana:[49.1900,16.6200],malaamerika:[49.1880,16.6087],vodojemy:[49.1928,16.5878],exit:[49.1942,16.6082],artbar:[49.2080,16.6038],perpetuum:[49.1969,16.6118],sibir:[49.2156,16.6372],radost:[49.1986,16.6258],boby:[49.2125,16.5948],twofaces:[49.1910,16.6080],sedmnebe:[49.1936,16.6093],pitkin:[49.2218,16.6005],charlieshat:[49.1955,16.6098],vnclub:[49.1938,16.6092],leitner:[49.1888,16.6018],typos:[49.1955,16.6080],alterna:[49.2092,16.5972],caribic:[49.1958,16.6085],yacht:[49.2265,16.5755],tabarin:[49.1972,16.6125],discoxxl:[49.1968,16.6155],musiclab:[49.1928,16.6055]};
+const VIMG={teepee:"teepee.jpg",sklenka:"https://goout.net/i/031/316366-800.jpg",fraktal:"fraktal.jpg",enter:"enter.jpg",mosilana:"https://goout.net/i/127/1273373-800.jpg",vodojemy:"https://goout.net/i/093/931810-800.jpg",perpetuum:"perpetuum.jpg",sibir:"https://goout.net/i/095/955788-800.jpg",amfik:"https://goout.net/i/090/900913-800.jpg",boby:"boby.jpg",twofaces:"twofaces.jpg",sedmnebe:"sedmnebe.jpg",pitkin:"https://goout.net/i/136/1364474-800.jpg",charlieshat:"https://goout.net/i/027/275450-800.jpg",caribic:"caribic.jpg",yacht:"https://goout.net/i/051/513128-800.jpg",discoxxl:"https://goout.net/i/049/492784-800.jpg",musiclab:"musiclab.jpg",fleda:"fleda.jpg",sono:"sono.jpg",kabinet:"https://goout.net/i/081/810376-800.jpg",semilasso:"https://goout.net/i/000/8677-800.jpg",industra:"https://goout.net/i/139/1390123-800.jpg",cabaret:"cabaret.jpg",starapekarna:"https://goout.net/i/052/528700-800.jpg",artbar:"https://goout.net/i/104/1045528-800.jpg",malaamerika:"https://goout.net/i/031/310094-800.jpg",exit:"exit.jpg",alterna:"alterna.jpg",leitner:"https://goout.net/i/081/811770-800.jpg"};
+let SEARCH="";
+function viewSearch(){return `<section class="blk"><div class="wrap"><div class="kick">◤ ${LANG==="cs"?"HLEDAT":"SEARCH"}</div>
+ <h2 class="big" style="margin-bottom:18px">${LANG==="cs"?"Hledat":"Search"}</h2>
+ <input id="searchInput" placeholder="${LANG==="cs"?"akce, kapela, žánr, klub…":"event, artist, genre, venue…"}" value="${esc(SEARCH)}" style="font-size:16px;padding:14px;margin-bottom:24px">
+ <div id="searchResults">${renderSearch()}</div></div></section>`;}
+function renderSearch(){const q=SEARCH.trim().toLowerCase();
+ if(!q)return `<div class="notice">${LANG==="cs"?"// začni psát…":"// start typing…"}</div>`;
+ const evs=getAll().filter(e=>e.date>=todayISO()&&(e.title+" "+(e.lineup||[]).join(" ")+" "+(e.genres||[]).join(" ")+" "+((V[e.venue]||{}).name||"")).toLowerCase().includes(q)).sort((a,b)=>a.date.localeCompare(b.date));
+ const vns=VENUES.filter(v=>(v.name+" "+v.district).toLowerCase().includes(q));
+ let h="";
+ if(vns.length)h+=`<div class="kick" style="margin-top:0">${LANG==="cs"?"KLUBY":"VENUES"} (${vns.length})</div><div class="venues" style="margin-bottom:30px">${vns.map(v=>`<a class="venue" href="#/klub/${v.id}"><h3>${esc(v.name)}</h3><div class="addr">▲ ${esc(v.address)} · ${esc(v.district)}</div><div class="cnt">${v.mode.toUpperCase()} →</div></a>`).join("")}</div>`;
+ h+=`<div class="kick">${LANG==="cs"?"AKCE":"EVENTS"} (${evs.length})</div><div class="cards">${evs.length?evs.map(eventCard).join(""):`<div class="notice">${t("empty")}</div>`}</div>`;
+ return h;}
+function viewMapa(){return `<section class="blk"><div class="wrap"><div class="kick">◤ ${LANG==="cs"?"MAPA KLUBŮ":"VENUE MAP"}</div>
+ <h2 class="big" style="margin-bottom:20px">${LANG==="cs"?"Mapa scény":"Scene map"}</h2>
+ <div id="leafmap" style="height:68vh;border:2px solid var(--border)"><div class="map-loading">${LANG==="cs"?"načítám mapu…":"loading map…"}</div></div>
+ <div class="mut mono" style="font-size:11px;margin-top:10px">${LANG==="cs"?"● underground · ○ public. Polohy jsou orientační — klikni na bod pro detail klubu.":"● underground · ○ public. Positions approximate — click a dot for venue detail."}</div></div></section>`;}
+function viewPridat(){return `<section class="blk"><div class="wrap"><div class="kick">${t("add_kick")} · ${MODE.toUpperCase()}</div>
+ <h2 class="big" style="margin-bottom:14px">${t("add_t")}</h2><div class="notice" style="margin-bottom:22px">${t("add_hint")}</div>
+ <form class="form" id="addForm"><div class="row"><label>${t("l_title")}</label><input name="title" required></div>
+ <div class="two"><div class="row"><label>${t("l_date")}</label><input type="date" name="date" required></div><div class="row"><label>${t("l_time")}</label><input name="time" placeholder="22:00" required></div></div>
+ <div class="two"><div class="row"><label>${t("l_venue")}</label><select name="venue">${modeVenues().map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join("")}</select></div><div class="row"><label>${t("l_genre")}</label><select name="genre">${ALL_GENRES.map(g=>`<option>${g}</option>`).join("")}</select></div></div>
+ <div class="two"><div class="row"><label>${t("l_price")}</label><input name="price" placeholder="200 Kč"></div><div class="row"><label>${t("l_ticket")}</label><input name="ticket" placeholder="https://"></div></div>
+ <div class="row"><label>${t("l_lineup")}</label><input name="lineup" placeholder="DJ A, DJ B, live: C"></div>
+ <div class="row"><label>${t("l_desc")}</label><textarea name="desc" rows="3"></textarea></div>
+ <div><button class="btn btn-pri" type="submit">${t("submit")}</button></div><div id="addMsg"></div></form></div></section>`;}
+function viewManifest(){return `<section class="blk"><div class="wrap"><div class="kick">${t("man_kick")}</div>
+ <h2 class="big">${t("man_t1")}<br><span class="accent">${t("man_t2")}</span></h2>
+ <div class="man-grid"><div><div class="t">${t("man1t")}</div>${t("man1b")}</div><div><div class="t">${t("man2t")}</div>${t("man2b")}</div><div><div class="t">${t("man3t")}</div>${t("man3b")}</div></div></div></section>`;}
+function viewAdmin(){if(sessionStorage.getItem("bu_admin")!=="1"){return `<section class="blk"><div class="wrap" style="max-width:420px"><div class="kick">◤ ${t("admin_t")}</div>
+ <h2 class="big" style="font-size:40px;margin-bottom:18px">${t("admin_t")}</h2><form class="form" id="gateForm"><div class="row"><label>${t("admin_gate")}</label><input type="password" name="pw" autofocus></div>
+ <div><button class="btn btn-pri" type="submit">→</button></div><div id="gateMsg" class="mut mono" style="font-size:12px"></div></form><div class="mut mono" style="font-size:11px;margin-top:14px">hint: podzemi</div></div></section>`;}
+ const pending=getPending(),subs=load("bu_subs",[]);
+ return `<section class="blk"><div class="wrap"><div class="kick">◤ ${t("admin_t")}</div><h2 class="big" style="font-size:44px;margin-bottom:24px">${t("admin_pending")}</h2>
+ <div id="pendingList">${pending.length?pending.map(p=>`<div class="admin-row" data-id="${p.id}"><div class="info"><b>${esc(p.title)}</b> <span class="mut">[${(p.mode||"?").toUpperCase()}]</span> — ${esc(p.date)} ${esc(p.time)} · ${esc((V[p.venue]||{}).name||p.venue)} · ${p.genres.join(",")}</div>
+ <div class="acts"><button class="mini good" data-act="approve" data-id="${p.id}">${t("approve")}</button><button class="mini bad" data-act="reject" data-id="${p.id}">${t("reject")}</button></div></div>`).join(""):`<div class="notice">${t("admin_none")}</div>`}</div>
+ <h2 class="big" style="font-size:30px;margin:38px 0 16px">${t("admin_subs")} (${subs.length})</h2><div class="notice">${subs.length?subs.map(esc).join(" · "):"—"}</div></div></section>`;}
+function renderFooter(){document.getElementById("footer").innerHTML=`<div class="foot"><div><h4>${t("news_h")}</h4><p>${t("news_p")}</p>
+ <form class="news" id="newsForm"><input name="contact" placeholder="${t("news_ph")}"><button class="btn btn-pri" type="submit">${t("join")}</button></form>
+ <div id="newsMsg" class="mono pri" style="font-size:12px;margin-top:10px"></div></div>
+ <div class="col"><div class="h">${t("f_nav")}</div><a href="#/akce">${t("nav_akce")}</a><a href="#/kluby">${t("nav_kluby")}</a><a href="#/pridat">${t("submit_show")}</a></div>
+ <div class="col"><div class="h">/ ${MODE.toUpperCase()}</div><span>Telegram</span><span>Instagram</span><span>Radio</span><a href="#/admin">${t("admin")}</a></div></div>
+ <div class="foot-strip"></div><div class="copy"><div>${t("copy1")}</div><div>${t("copy2")}</div></div>`;}
+function renderChrome(){const route=(location.hash||"#/").split("/")[1]||"";
+ const items=[["akce",t("nav_akce")],["kluby",t("nav_kluby")],["mapa",LANG==="cs"?"MAPA":"MAP"],["hledat",LANG==="cs"?"HLEDAT":"SEARCH"],["pridat",t("nav_pridat")]];
+ document.getElementById("nav").innerHTML=items.map(([r,label])=>`<a href="#/${r}" class="${route===r?"active":""}">${label}</a>`).join("");
+ document.getElementById("lang").innerHTML=["cs","en"].map(l=>`<button class="${LANG===l?"on":""}" data-l="${l}">${l.toUpperCase()}</button>`).join("");
+ document.getElementById("modeBtn").textContent=MODE==="underground"?"⇄ POVRCH":"⇄ UNDERGROUND";}
+function router(){const parts=(location.hash||"#/").replace(/^#\//,"").split("/");const route=parts[0]||"";let html;
+ if(route===""||route==="home")html=viewHome();
+ else if(route==="akce"&&parts[1])html=viewDetail(parts[1]);
+ else if(route==="akce")html=viewAkce();
+ else if(route==="klub"&&parts[1])html=viewVenue(parts[1]);
+ else if(route==="kluby")html=viewKluby();
+ else if(route==="hledat")html=viewSearch();
+ else if(route==="mapa")html=viewMapa();
+ else if(route==="pridat")html=viewPridat();
+ else if(route==="admin")html=viewAdmin();
+ else html=`<section class="blk"><div class="wrap"><div class="kick">◤ 404</div><h2 class="big">${LANG==="cs"?"Ztracen ve scéně.":"Lost in the scene."}</h2><div style="margin-top:22px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn btn-pri" href="#/">${LANG==="cs"?"DOMŮ":"HOME"}</a><a class="btn btn-out" href="#/akce">${t("nav_akce")}</a></div></div></section>`;
+ document.getElementById("app").innerHTML=html;renderChrome();renderFooter();bindView(route);
+ document.getElementById("nav").classList.remove("open");window.scrollTo(0,0);}
+function bindView(route){
+ if(route==="hledat"){const si=document.getElementById("searchInput");if(si){si.addEventListener("input",e=>{SEARCH=e.target.value;document.getElementById("searchResults").innerHTML=renderSearch();});si.focus();}}
+ if(route==="mapa"&&window.L){const m=L.map("leafmap",{scrollWheelZoom:true,zoomControl:true}).setView([49.197,16.607],13);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap, © CARTO"}).addTo(m);
+  const marks={};const focus=(location.hash||"").split("/")[2];
+  VENUES.filter(v=>v.mode===MODE).forEach(v=>{const c=COORDS[v.id];if(!c)return;const col=v.mode==="underground"?"#ecc400":"#37d4e6";marks[v.id]=L.circleMarker(c,{radius:8,color:col,weight:2,fillColor:col,fillOpacity:.55}).addTo(m).bindTooltip(esc(v.name),{permanent:true,direction:"top",offset:[0,-4],className:"vlabel"}).bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.district)}<br><a href="#/klub/${v.id}">${LANG==="cs"?"detail klubu →":"venue detail →"}</a>`);});
+  if(focus&&marks[focus]){m.setView(COORDS[focus],16);marks[focus].openPopup();}
+  const upd=()=>m.getContainer().classList.toggle("zoomed",m.getZoom()>=15);m.on("zoom",upd);upd();
+  const ph=m.getContainer().querySelector(".map-loading");if(ph)ph.remove();
+  setTimeout(()=>m.invalidateSize(),120);}
+ if(route==="akce"&&!location.hash.split("/")[2]){
+  document.getElementById("genrePills")?.addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(!b)return;FILT.genre=b.dataset.g;
+   document.querySelectorAll("#genrePills .pill").forEach(p=>p.classList.toggle("on",p.dataset.g===FILT.genre));document.getElementById("akceList").innerHTML=renderAkceList();});
+  document.getElementById("fWhen")?.addEventListener("change",e=>{FILT.when=e.target.value;document.getElementById("akceList").innerHTML=renderAkceList();});
+  document.getElementById("fVenue")?.addEventListener("change",e=>{FILT.venue=e.target.value;document.getElementById("akceList").innerHTML=renderAkceList();});}
+ document.getElementById("shareBtn")?.addEventListener("click",()=>{const url=location.href;if(navigator.share){navigator.share({url}).catch(()=>{});}else{navigator.clipboard&&navigator.clipboard.writeText(url);alert(t("shared"));}});
+ document.getElementById("addForm")?.addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);
+  const ev={id:"x"+Date.now(),mode:MODE,title:f.get("title"),date:f.get("date"),time:f.get("time")||"20:00",venue:f.get("venue"),genres:[f.get("genre")],price:f.get("price")||"?",ticket:f.get("ticket")||"",featured:false,lineup:(f.get("lineup")||"").split(",").map(s=>s.trim()).filter(Boolean),blurb:(f.get("desc")||"").slice(0,90),desc:f.get("desc")||""};
+  const p=getPending();p.push(ev);save("bu_pending",p);fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({"form-name":"akce",mode:MODE,title:f.get("title")||"",date:f.get("date")||"",time:f.get("time")||"",venue:f.get("venue")||"",genre:f.get("genre")||"",price:f.get("price")||"",ticket:f.get("ticket")||"",lineup:f.get("lineup")||"",desc:f.get("desc")||""}).toString()}).catch(()=>{});e.target.reset();document.getElementById("addMsg").innerHTML=`<div class="notice ok">${t("add_ok")}</div>`;});
+ document.getElementById("newsForm")?.addEventListener("submit",e=>{e.preventDefault();const c=new FormData(e.target).get("contact");if(!c)return;const s=load("bu_subs",[]);s.push(c);save("bu_subs",s);fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({"form-name":"newsletter",contact:c}).toString()}).catch(()=>{});e.target.reset();document.getElementById("newsMsg").textContent=t("news_ok");});
+ document.getElementById("gateForm")?.addEventListener("submit",e=>{e.preventDefault();const pw=new FormData(e.target).get("pw");if(pw==="podzemi"){sessionStorage.setItem("bu_admin","1");router();}else document.getElementById("gateMsg").textContent=t("admin_wrong");});
+ document.getElementById("pendingList")?.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;const id=b.dataset.id;let p=getPending();const item=p.find(x=>x.id===id);p=p.filter(x=>x.id!==id);save("bu_pending",p);if(b.dataset.act==="approve"&&item){const a=load("bu_approved",[]);a.push(item);save("bu_approved",a);}router();});
+}
+function setMode(m){const app=document.getElementById("app");app.classList.remove("m-in");app.classList.add("m-out");setTimeout(()=>{MODE=m;localStorage.setItem("bu_mode",m);document.body.className="mode-"+m;FILT={genre:"ALL",when:"all",venue:"all"};router();const a=document.getElementById("app");a.classList.remove("m-out");a.classList.add("m-in");setTimeout(()=>a.classList.remove("m-in"),470);},180);}
+document.body.className="mode-"+MODE;
+document.getElementById("modeBtn").addEventListener("click",()=>setMode(MODE==="underground"?"public":"underground"));
+document.getElementById("lang").addEventListener("click",e=>{const b=e.target.closest("[data-l]");if(!b)return;LANG=b.dataset.l;localStorage.setItem("bu_lang",LANG);router();});
+document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("nav").classList.toggle("open"));
+document.getElementById("intro").addEventListener("click",e=>{const h=e.target.closest(".ihalf");if(!h)return;const m=h.dataset.mode;MODE=m;localStorage.setItem("bu_mode",m);document.body.className="mode-"+m;FILT={genre:"ALL",when:"all",venue:"all"};router();const iv=document.getElementById("intro");iv.classList.add("hide");setTimeout(()=>{iv.style.display="none";},580);});
+window.addEventListener("hashchange",router);
+router();
+</script>
+</body>
+</html>

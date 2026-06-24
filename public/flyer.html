@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flyer → akce · BRNO SCÉNA</title>
+<style>
+  *{box-sizing:border-box}
+  body{background:#0c0b0a;color:#efeae0;font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:26px 18px 60px;line-height:1.5}
+  h1{font-size:22px;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
+  p.sub{color:#b7b1a6;font-size:14px;margin:0 0 20px}
+  label{font-size:13px;color:#b7b1a6;display:block;margin:14px 0 4px}
+  input,button{width:100%;padding:14px;font-size:16px;border-radius:10px;border:1px solid #2a2724;background:#161412;color:#efeae0}
+  button{background:#ecc400;color:#161208;font-weight:700;border:none;margin-top:18px;cursor:pointer}
+  button:disabled{opacity:.5}
+  #out{margin-top:18px}
+  pre{white-space:pre-wrap;word-break:break-word;background:#161412;padding:14px;border-radius:10px;border:1px solid #2a2724;font-size:14px;color:#d7d1c6}
+  .ok{color:#7ed957}.err{color:#ff6b6b}
+  img#prev{max-width:100%;border-radius:10px;margin-top:12px;display:none}
+</style>
+</head>
+<body>
+  <h1>Flyer → akce</h1>
+  <p class="sub">Nahraj screenshot story / plakát — vytáhne z něj akci.</p>
+
+  <label>Admin heslo</label>
+  <input type="password" id="pw" placeholder="heslo" autocomplete="current-password">
+
+  <label>Obrázek (story / plakát)</label>
+  <input type="file" id="file" accept="image/*" capture="environment">
+  <img id="prev" alt="">
+
+  <button id="go">Zpracovat</button>
+  <div id="out"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  $("file").addEventListener("change", () => {
+    const f = $("file").files[0];
+    if (f) { $("prev").src = URL.createObjectURL(f); $("prev").style.display = "block"; }
+  });
+  $("go").addEventListener("click", async () => {
+    const f = $("file").files[0];
+    if (!f) { alert("Vyber obrázek."); return; }
+    $("go").disabled = true;
+    $("out").innerHTML = "zpracovávám…";
+    try {
+      const b64 = await toB64(f);
+      const r = await fetch("/.netlify/functions/flyer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: b64, media_type: f.type || "image/jpeg", pw: $("pw").value })
+      });
+      const d = await r.json();
+      if (d.error) { $("out").innerHTML = '<p class="err">⚠️ ' + d.error + '</p>'; }
+      else {
+        $("out").innerHTML = '<p class="ok">✓ Vytaženo (zkontroluj a přidej přes formulář na webu):</p><pre>'
+          + JSON.stringify(d, null, 2) + '</pre>';
+      }
+    } catch (e) {
+      $("out").innerHTML = '<p class="err">Chyba: ' + e + '</p>';
+    }
+    $("go").disabled = false;
+  });
+  function toB64(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(",")[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+</script>
+</body>
+</html>
