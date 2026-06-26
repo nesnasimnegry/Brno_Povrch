@@ -1,4 +1,4 @@
-name: BRNO SCENA - tydenni grab akci (POVRCH)
+name: BRNO SCENA - tydenni grab akci
 
 on:
   schedule:
@@ -25,8 +25,21 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain public/index.html)" ]; then
             git add public/index.html
-            git commit -m "auto: tydenni dopdneni POVRCH akci z GoOutu"
+            git commit -m "auto: tydenni doplneni akci"
             git push
           else
             echo "Zadna zmena."
           fi
+      - name: Email report
+        if: ${{ hashFiles('report.txt') != '' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "BRNO SCENA - nove akce doplneny"
+          to: gpuagency@gmail.com
+          from: BRNO SCENA bot <${{ secrets.GMAIL_USER }}>
+          body: file://report.txt
