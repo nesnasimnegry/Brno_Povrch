@@ -312,7 +312,7 @@ def update_index(events, dry_run):
     if new_src.count("</html>") != 1:
         print("[error] po úpravě není právě jedno </html> — NEUKLÁDÁM", file=sys.stderr)
         return 1
-    print(f"[info] ponecháno {len(kept)} ručních/underground, doplněno {len(new_items)} public "
+    print(f"[info] ponecháno {len(kept)} ostatních, doplněno {len(new_items)} {MODE} "
           f"({len(events) - len(fresh)} přeskočeno jako duplikát)")
     if dry_run:
         print("[dry-run] nic se nezapsalo. Nové akce:")
@@ -323,6 +323,13 @@ def update_index(events, dry_run):
     with open(INDEX_FILE, "w", encoding="utf-8") as f:
         f.write(new_src)
     print(f"[ok] {INDEX_FILE} zapsán ({len(new_src)} znaků).")
+    if fresh:
+        with open("report.txt", "a", encoding="utf-8") as rf:
+            rf.write(f"\n— {MODE.upper()} — doplněno {len(fresh)} akcí:\n")
+            for e in fresh:
+                lu = (" — " + ", ".join(e.get("lineup", []))) if e.get("lineup") else ""
+                rf.write(f"  • {e['date']} {e['time']}  {e['venue']}  [{'/'.join(e['genres'])}]  "
+                         f"{e.get('price') or ''}  {e['title']}{lu}\n")
     return 0
 
 
