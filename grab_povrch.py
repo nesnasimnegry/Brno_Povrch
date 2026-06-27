@@ -18,12 +18,21 @@ Když by po úpravě chybělo </html>, NIC neuloží.
 """
 import argparse
 import datetime
+import os
 import re
 import sys
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+
+# Windows konzole (cp1250) by jinak spadla na znacích jako → … — a shodila celý běh.
+# errors="replace": výpis se nikdy nesmí stát důvodem pádu grabberu.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 GOOUT_BASE = "https://goout.net/cs/brno/akce/lezjyvlkk/"
 INDEX_FILE = "public/index.html"
@@ -217,7 +226,12 @@ def fetch_events(today):
 
 # ---------- práce s index.html ----------
 def js_escape(s):
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    # Pozn.: po escapu NEKRÁTIT (uříznutý '\' rozbije literál) — krať RAW text PŘED voláním.
+    s = str(s).replace("\\", "\\\\").replace('"', '\\"')
+    # Znaky, které jinak rozbijí JS string literál → SyntaxError → bílá obrazovka pro všechny:
+    s = s.replace("\u2028", " ").replace("\u2029", " ")   # JS radkove oddelovace
+    s = re.sub(r"[\x00-\x1f]+", " ", s)                    # newline, tab, ostatní control znaky
+    return s
 
 
 def split_items(arr_body):
@@ -256,8 +270,8 @@ def build_item(idx, e):
     genres = ",".join(f'"{g}"' for g in e["genres"])
     lineup = ",".join('"%s"' % js_escape(x) for x in e.get("lineup", []))
     price = js_escape(e.get("price") or "vstupenky na GoOut")
-    blurb = js_escape(e.get("blurb") or e["title"])[:90]
-    desc = js_escape(e.get("desc") or "")
+    blurb = js_escape((e.get("blurb") or e["title"])[:90])   # krátit PŘED escapem (jinak uříznutý \")
+    desc = js_escape((e.get("desc") or "")[:240])
     return (
         '{id:"%s%d",mode:"%s",title:"%s",date:"%s",time:"%s",venue:"%s",'
         'genres:[%s],price:"%s",ticket:"%s",featured:%s,'
@@ -312,6 +326,9 @@ def update_index(events, dry_run):
     if new_src.count("</html>") != 1:
         print("[error] po úpravě není právě jedno </html> — NEUKLÁDÁM", file=sys.stderr)
         return 1
+    if len(new_src) < len(src) // 2:
+        print(f"[error] výsledek podezřele malý ({len(new_src)} vs {len(src)} B) — NEUKLÁDÁM", file=sys.stderr)
+        return 1
     print(f"[info] ponecháno {len(kept)} ostatních, doplněno {len(new_items)} {MODE} "
           f"({len(events) - len(fresh)} přeskočeno jako duplikát)")
     if dry_run:
@@ -320,8 +337,18 @@ def update_index(events, dry_run):
             lu = (" · " + ", ".join(e.get("lineup", []))) if e.get("lineup") else ""
             print(f"   {e['date']} {e['time']}  {e['venue']:12s} {'/'.join(e['genres']):12s} {(e.get('price') or ''):12s} {e['title']}{lu}")
         return 0
-    with open(INDEX_FILE, "w", encoding="utf-8") as f:
+    # Atomický zápis: do .tmp, ověř re-readem celistvost, teprve pak os.replace.
+    # Když proces umře uprostřed zápisu, live index.html zůstane nedotčený.
+    tmp = INDEX_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(new_src)
+    with open(tmp, "r", encoding="utf-8") as f:
+        written = f.read()
+    if written != new_src or written.count("</html>") != 1:
+        os.remove(tmp)
+        print("[error] zapsaný soubor nesouhlasí (neúplný zápis?) — PŮVODNÍ index.html ZACHOVÁN", file=sys.stderr)
+        return 1
+    os.replace(tmp, INDEX_FILE)
     print(f"[ok] {INDEX_FILE} zapsán ({len(new_src)} znaků).")
     if fresh:
         with open("report.txt", "a", encoding="utf-8") as rf:
