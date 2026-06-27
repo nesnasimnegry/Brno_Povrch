@@ -545,5 +545,6 @@ window.addEventListener("hashchange",router);
 router();
 (function(){var p=(location.hash||"").replace(/^#\//,"").split("/"),r0=p[0];if(!r0||r0==="home")return;var m=null;if(r0==="klub"&&p[1]&&V[p[1]])m=V[p[1]].mode;else if(r0==="akce"&&p[1]){var ev=getAll().find(function(x){return x.id===p[1];});if(ev)m=ev.mode;}if(m){MODE=m;document.body.className="mode-"+MODE;router();}var iv=document.getElementById("intro");if(iv){iv.classList.add("hide");iv.style.display="none";}})();
 </script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1130cb5ba45e43c8901f887390d8ca3b"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
