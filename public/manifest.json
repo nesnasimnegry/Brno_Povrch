@@ -1,0 +1,14 @@
+{
+  "name": "BRNO SCÉNA — koncerty, kluby & akce v Brně",
+  "short_name": "BRNO SCÉNA",
+  "description": "Underground i mainstream hudební scéna v Brně na jednom místě — akce, kluby a mapa scény.",
+  "lang": "cs",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0b0a",
+  "theme_color": "#0c0b0a",
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" }
+  ]
+}
