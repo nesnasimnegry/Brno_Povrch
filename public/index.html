@@ -364,7 +364,7 @@ const getPending=()=>load("bu_pending",[]);
 function fmtDate(ds,time){const d=new Date(ds+"T"+(time||"20:00")+":00");const loc=LANG==="cs"?"cs-CZ":"en-GB";
  return {wd:d.toLocaleDateString(loc,{weekday:"short"}).toUpperCase().replace(".",""),day:d.toLocaleDateString(loc,{day:"2-digit"}),mo:d.toLocaleDateString(loc,{month:"short"}).toUpperCase().replace(".",""),full:d.toLocaleDateString(loc,{weekday:"long",day:"numeric",month:"long"})};}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const todayISO=()=>new Date().toISOString().slice(0,10);
+const todayISO=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Prague"});
 const inWeek=ds=>{const diff=(new Date(ds)-new Date())/86400000;return diff>=-1&&diff<=7;};
 const isWeekend=ds=>{const g=new Date(ds).getDay();return g===5||g===6||g===0;};
 function eventCard(e){const v=V[e.venue],d=fmtDate(e.date,e.time),img=VIMG[e.venue],dstyle=img?` style="background-image:linear-gradient(rgba(12,11,10,.45),rgba(12,11,10,.78)),url('${img}');background-size:cover;background-position:center"`:"";
@@ -541,7 +541,7 @@ document.getElementById("menuBtn").addEventListener("click",()=>document.getElem
 document.getElementById("intro").addEventListener("click",e=>{const h=e.target.closest(".ihalf");if(!h)return;const m=h.dataset.mode;MODE=m;localStorage.setItem("bu_mode",m);document.body.className="mode-"+m;FILT={genre:"ALL",when:"all",venue:"all"};router();const iv=document.getElementById("intro");iv.classList.add("hide");setTimeout(()=>{iv.style.display="none";},580);});
 window.addEventListener("hashchange",router);
 router();
-(function(){var p=(location.hash||"").replace(/^#\//,"").split("/"),r0=p[0];if(!r0||r0==="home")return;if(r0==="klub"&&p[1]&&V[p[1]]){MODE=V[p[1]].mode;document.body.className="mode-"+MODE;router();}var iv=document.getElementById("intro");if(iv){iv.classList.add("hide");iv.style.display="none";}})();
+(function(){var p=(location.hash||"").replace(/^#\//,"").split("/"),r0=p[0];if(!r0||r0==="home")return;var m=null;if(r0==="klub"&&p[1]&&V[p[1]])m=V[p[1]].mode;else if(r0==="akce"&&p[1]){var ev=getAll().find(function(x){return x.id===p[1];});if(ev)m=ev.mode;}if(m){MODE=m;document.body.className="mode-"+MODE;router();}var iv=document.getElementById("intro");if(iv){iv.classList.add("hide");iv.style.display="none";}})();
 </script>
 </body>
 </html>
