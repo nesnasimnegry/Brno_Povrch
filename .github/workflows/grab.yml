@@ -19,13 +19,19 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python grab_povrch.py
       - run: python grab_underground.py
+      - name: Notify subscribers
+        env:
+          SUBS_SECRET: ${{ secrets.SUBS_SECRET }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python notify.py
       - name: Commit
         run: |
           git config user.name "brno-scena-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain public/index.html)" ]; then
-            git add public/index.html
-            git commit -m "auto: tydenni doplneni akci z GoOutu"
+          git add public/index.html data/announced.json
+          if ! git diff --cached --quiet; then
+            git commit -m "auto: tydenni doplneni akci + notifikace"
             git pull --rebase --autostash origin main
             git push
           else
