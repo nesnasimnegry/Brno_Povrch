@@ -1,4 +1,4 @@
-name: BRNO SCENA - tydenni grab akci
+name: BRNO SCENA - tydenni grab akci (POVRCH + underground)
 
 on:
   schedule:
@@ -25,13 +25,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain public/index.html)" ]; then
             git add public/index.html
-            git commit -m "auto: tydenni doplneni akci"
+            git commit -m "auto: tydenni doplneni akci z GoOutu"
             git pull --rebase --autostash origin main
             git push
           else
             echo "Zadna zmena."
           fi
-      - name: Email report
+      - name: Email report (jen kdyz neco pribylo)
         if: ${{ hashFiles('report.txt') != '' }}
         uses: dawidd6/action-send-mail@v3
         with:
