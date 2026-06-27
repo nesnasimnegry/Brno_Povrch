@@ -68,6 +68,10 @@ MUSIC_CATEGORIES = {"concerts", "clubbing", "festivals", "parties", "dancing", "
 _CAT_HINT = {"clubbing": "party", "parties": "party", "dancing": "party",
              "festivals": "festival", "concerts": "koncert"}
 
+# Self-monitoring: sem grabbery hlásí selhání zdroje (→ alert.txt → e-mail).
+# Sdílí i grab_underground.py přes `import grab_povrch as g`.
+WARNINGS = []
+
 
 # ---------- žánry podle pravidel ----------
 def genre_for(title, category):
@@ -189,6 +193,8 @@ def fetch_events(today):
         if not scroll or (last and last > horizon_s):
             break
     if not schedules:
+        WARNINGS.append(f"GoOut entity API vrátilo 0 schedules pro celé Brno (cityId {GOOUT_CITY_BRNO}) "
+                        f"— pravděpodobně změna/blok API, ne jen málo akcí.")
         print("[error] GoOut API nevrátil žádné schedules", file=sys.stderr)
         return []
 
@@ -298,6 +304,11 @@ def item_id(item):
     return m.group(1) if m else ""
 
 
+def item_date(item):
+    m = re.search(r'date\s*:\s*"([^"]*)"', item)
+    return m.group(1) if m else ""
+
+
 def build_item(idx, e):
     feat = "true" if idx <= 2 else "false"
     genres = ",".join(f'"{g}"' for g in e["genres"])
@@ -347,28 +358,43 @@ def update_index(events, dry_run):
         return 1
     items = split_items(src[start + 1:end])
     kept = [it for it in items if not re.match(REPLACE_RE, item_id(it))]
-    existing_pairs = set()
-    for it in kept:
-        tt = re.search(r'title\s*:\s*"([^"]*)"', it)
-        dd = re.search(r'date\s*:\s*"([^"]*)"', it)
-        if tt and dd:
-            existing_pairs.add((tt.group(1).lower(), dd.group(1)))
-    fresh = [e for e in events if (e["title"].lower(), e["date"]) not in existing_pairs]
-    new_items = [build_item(i + 1, e) for i, e in enumerate(fresh)]
-    new_src = src[:start + 1] + "\n" + ",\n".join(kept + new_items) + "\n" + src[end:]
+    today_s = datetime.date.today().strftime("%Y-%m-%d")
+    if events:
+        # Zdroj dodal akce → nahraď celý auto-blok čerstvými (jen budoucími);
+        # prošlé i zmizelé auto-akce tím samy zmizí.
+        existing_pairs = set()
+        for it in kept:
+            tt = re.search(r'title\s*:\s*"([^"]*)"', it)
+            dd = re.search(r'date\s*:\s*"([^"]*)"', it)
+            if tt and dd:
+                existing_pairs.add((tt.group(1).lower(), dd.group(1)))
+        fresh = [e for e in events if (e["title"].lower(), e["date"]) not in existing_pairs]
+        auto_block = [build_item(i + 1, e) for i, e in enumerate(fresh)]
+        info = (f"doplněno {len(auto_block)} {MODE} "
+                f"({len(events) - len(fresh)} přeskočeno jako duplikát)")
+    else:
+        # Zdroj nic nedodal (možná spadl) → NEMAž budoucí auto-akce, jen prošlé.
+        old_auto = [it for it in items if re.match(REPLACE_RE, item_id(it))]
+        auto_block = [it for it in old_auto if item_date(it) >= today_s]
+        fresh = []
+        info = (f"zdroj prázdný — zachováno {len(auto_block)} budoucích auto, "
+                f"smazáno {len(old_auto) - len(auto_block)} prošlých")
+    new_src = src[:start + 1] + "\n" + ",\n".join(kept + auto_block) + "\n" + src[end:]
     if new_src.count("</html>") != 1:
         print("[error] po úpravě není právě jedno </html> — NEUKLÁDÁM", file=sys.stderr)
         return 1
     if len(new_src) < len(src) // 2:
         print(f"[error] výsledek podezřele malý ({len(new_src)} vs {len(src)} B) — NEUKLÁDÁM", file=sys.stderr)
         return 1
-    print(f"[info] ponecháno {len(kept)} ostatních, doplněno {len(new_items)} {MODE} "
-          f"({len(events) - len(fresh)} přeskočeno jako duplikát)")
+    print(f"[info] ponecháno {len(kept)} ostatních, {info}")
     if dry_run:
         print("[dry-run] nic se nezapsalo. Nové akce:")
         for e in fresh:
             lu = (" · " + ", ".join(e.get("lineup", []))) if e.get("lineup") else ""
             print(f"   {e['date']} {e['time']}  {e['venue']:12s} {'/'.join(e['genres']):12s} {(e.get('price') or ''):12s} {e['title']}{lu}")
+        return 0
+    if new_src == src:
+        print("[info] beze změny — nezapisuji.")
         return 0
     # Atomický zápis: do .tmp, ověř re-readem celistvost, teprve pak os.replace.
     # Když proces umře uprostřed zápisu, live index.html zůstane nedotčený.
@@ -393,6 +419,19 @@ def update_index(events, dry_run):
     return 0
 
 
+def write_alerts(dry_run):
+    """Self-monitoring: nasbírané WARNINGS zapíše do alert.txt (workflow je pošle mailem)."""
+    if not WARNINGS:
+        return
+    for w in WARNINGS:
+        print(f"[ALERT] {w}", file=sys.stderr)
+    if not dry_run:
+        with open("alert.txt", "a", encoding="utf-8") as af:
+            af.write(f"\n⚠️ {MODE.upper()} — {datetime.date.today()}:\n")
+            for w in WARNINGS:
+                af.write(f"  • {w}\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="jen vypsat, nic nezapisovat")
@@ -402,9 +441,10 @@ def main():
     events = fetch_events(today)
     print(f"[info] nalezeno {len(events)} hudebních akcí v našich podnicích.")
     if not events:
-        print("[warn] 0 akcí — GoOut možná změnil strukturu; pošli výstup debug_goout.py.")
-        return 0
-    return update_index(events, args.dry_run)
+        print("[warn] 0 akcí v našich podnicích — uklidím prošlé auto-akce, budoucí nechám.")
+    rc = update_index(events, args.dry_run)   # běží i při 0 akcí → úklid prošlých
+    write_alerts(args.dry_run)
+    return rc
 
 
 if __name__ == "__main__":

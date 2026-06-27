@@ -70,6 +70,7 @@ def fetch_kabinet(today):
         r.raise_for_status()
     except Exception as e:
         print(f"[warn] Kabinet web nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"Kabinet web nešel načíst: {e}")
         return out
     soup = BeautifulSoup(r.text, "html.parser")
     for a in soup.find_all("a", href=re.compile(r"/program/\d{4}-\d{2}-\d{2}-")):
@@ -100,6 +101,7 @@ def fetch_alterna(today):
         r.raise_for_status()
     except Exception as e:
         print(f"[warn] Alterna web nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"Alterna web nešel načíst: {e}")
         return out
     soup = BeautifulSoup(r.text, "html.parser")
     for h in soup.find_all("h3"):
@@ -145,6 +147,7 @@ def fetch_exit(today):
         r.raise_for_status()
     except Exception as e:
         print(f"[warn] Exit web nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"Exit web nešel načíst: {e}")
         return out
     soup = BeautifulSoup(r.text, "html.parser")
     skip = re.compile(r"nadcházej|youtube|aktuality|^news$|top events|event měsíce|"
@@ -217,9 +220,10 @@ def main():
     merged = sorted(merged, key=lambda e: e["date"])[:g.MAX_EVENTS]
     print(f"[info] GoOut: {len(goout)}, " + ", ".join(counts) + f" → celkem {len(merged)}")
     if not merged:
-        print("[warn] 0 akcí.")
-        return 0
-    return g.update_index(merged, args.dry_run)
+        print("[warn] 0 akcí — uklidím prošlé underground akce, budoucí nechám.")
+    rc = g.update_index(merged, args.dry_run)   # běží i při 0 → úklid prošlých
+    g.write_alerts(args.dry_run)
+    return rc
 
 
 if __name__ == "__main__":
