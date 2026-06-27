@@ -5,7 +5,7 @@ grab_povrch.py — off-cloud POVRCH grabber pro BRNO SCÉNA.
 Stáhne nadcházející HUDEBNÍ akce z GoOut Brno, namapuje na ID podniků v appce
 a aktualizuje pole `const EVENTS=[...]` v public/index.html.
 
-ŽÁDNÉ LLM, žádné API, žádné tajemství. Jen requests + BeautifulSoup.
+ŽÁDNÉ LLM, žádné tajemství. Data z veřejného GoOut entity API (JSON přes requests).
 Žánry řeší pravidla (klíčová slova).
 
 Použití:
@@ -24,7 +24,6 @@ import sys
 from zoneinfo import ZoneInfo
 
 import requests
-from bs4 import BeautifulSoup
 
 # Windows konzole (cp1250) by jinak spadla na znacích jako → … — a shodila celý běh.
 # errors="replace": výpis se nikdy nesmí stát důvodem pádu grabberu.
@@ -60,8 +59,14 @@ VENUE_MAP = {
     "galerie vaňkovka": "vankovka", "vaňkovka": "vankovka",
 }
 
-# Kategorie GoOutu, které bereme (hudba). Divadlo, Jiné akce, Výstavy... ignorujeme.
-MUSIC_CATS = {"koncerty", "parties", "party", "festivaly", "kluby", "koncert"}
+# GoOut je dnes SPA → akce bereme z interního entity API (strukturovaný JSON).
+GOOUT_API = "https://goout.net/services/entities/v1"
+GOOUT_CITY_BRNO = 101748109   # GoOut cityId pro Brno (serverový filtr)
+# mainCategory v API, které bereme jako hudbu (divadlo/výstavy/sport ignorujeme):
+MUSIC_CATEGORIES = {"concerts", "clubbing", "festivals", "parties", "dancing", "music"}
+# překlad kategorie na nápovědu pro genre_for (ta zná česká/klíčová slova):
+_CAT_HINT = {"clubbing": "party", "parties": "party", "dancing": "party",
+             "festivals": "festival", "concerts": "koncert"}
 
 
 # ---------- žánry podle pravidel ----------
@@ -90,9 +95,15 @@ def genre_for(title, category):
     return tags
 
 
-# ---------- parsování GoOutu ----------
+# ---------- GoOut entity API ----------
+# GoOut je dnes SPA; veřejné HTML už akce neobsahuje. Bereme je z interního
+# entity API: /schedules vrací výskyty akcí (datum/čas + reference na venue,
+# event a performery). Filtr na Brno řeší server (cityId), na naše podniky
+# a hudbu filtrujeme až tady.
+
 def parse_iso(s):
-    """GoOut <time datetime="2026-06-24T18:00:00.000Z"> (UTC) -> (YYYY-MM-DD, HH:MM) v čase Prahy."""
+    """GoOut čas (ISO 8601 vč. offsetu, např. 2026-06-27T20:00:00+02:00)
+    -> (YYYY-MM-DD, HH:MM) v čase Prahy."""
     s = (s or "").strip().replace("Z", "+00:00")
     try:
         d = datetime.datetime.fromisoformat(s)
@@ -104,124 +115,146 @@ def parse_iso(s):
     return d.strftime("%Y-%m-%d"), d.strftime("%H:%M")
 
 
-def nearest_card(a):
-    """Vrátí nejbližšího předka, který obsahuje <time> (= karta jedné akce)."""
-    card = a.parent
-    for _ in range(4):
-        if card is None:
-            return None
-        if card.find("time") is not None:
-            return card
-        card = card.parent
+def _api_get(path, params):
+    """GET na GoOut entity API. Vrátí dict, při JAKÉKOLI chybě None (nikdy
+    nevyhodí výjimku) — výpadek zdroje nesmí shodit grabber ani web."""
+    base = [("languages[]", "cs"), ("source", "goout.net")]
+    try:
+        r = requests.get(f"{GOOUT_API}/{path}", params=base + params,
+                         headers={**UA, "Accept": "application/json"}, timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"[warn] GoOut API /{path} selhalo: {e}", file=sys.stderr)
+        return None
+
+
+def _fetch_entities(path, ids):
+    """Dotáhne entity (venues/events/performers) podle ID. Vrátí {str(id): entity}.
+    ID se posílají jako opakované ids[] (po 25)."""
+    out = {}
+    ids = [str(i) for i in ids]
+    for i in range(0, len(ids), 25):
+        j = _api_get(path, [("ids[]", x) for x in ids[i:i + 25]])
+        for e in (j or {}).get(path, []) or []:
+            out[str(e.get("id"))] = e
+    return out
+
+
+def _locale_name(entity):
+    cs = (entity.get("locales") or {}).get("cs") or {}
+    return (cs.get("name") or "").strip()
+
+
+def _venue_app_id(goout_name):
+    """Název podniku z GoOutu -> ID v appce. Nejdřív přesně, pak podřetězcem
+    (GoOut má 'Klub Fléda', my klíč 'fléda')."""
+    n = goout_name.lower().strip()
+    if n in VENUE_MAP:
+        return VENUE_MAP[n]
+    for key, vid in VENUE_MAP.items():
+        if key in n:
+            return vid
     return None
 
 
-def fetch_detail(url):
-    """Z detailu akce vytáhne cenu, lineup, popis a blurb. Best-effort; chyby ignoruje."""
-    info = {"price": "", "lineup": [], "blurb": "", "desc": ""}
-    try:
-        r = requests.get(url, headers=UA, timeout=30)
-        r.raise_for_status()
-    except Exception:
-        return info
-    soup = BeautifulSoup(r.text, "html.parser")
-    text = soup.get_text(" ", strip=True)
-    # cena: za labelem "Vstupné"
-    m = re.search(r"Vstupn[ée]\s+(?:od\s+)?(\d[\d\s]*\s*Kč|Zdarma|Vstup zdarma|Vyprodáno)", text)
-    if m:
-        info["price"] = re.sub(r"\s+", " ", m.group(1)).strip()
-    elif "Vyprodáno" in text:
-        info["price"] = "vyprodáno"
-    # lineup: odkazy na umělce (ID začíná "p", např. /cs/metastavy/pzstnwf/)
-    seen = set()
-    for a in soup.find_all("a", href=re.compile(r"^/cs/[^/]+/p[a-z0-9]+/?$")):
-        nm = (a.get("title") or a.get_text(" ", strip=True) or "").strip()
-        k = nm.lower()
-        if nm and k not in seen and 1 < len(nm) < 60:
-            seen.add(k)
-            info["lineup"].append(nm)
-    info["lineup"] = info["lineup"][:6]
-    # popis: nejdelší odstavec
-    paras = [p.get_text(" ", strip=True) for p in soup.find_all("p") if len(p.get_text(strip=True)) > 60]
-    if paras:
-        info["desc"] = max(paras, key=len)[:240]
-    # blurb: přednostně tučná úvodní věta (teaser), jinak první věta popisu
-    lead = ""
-    for tag in soup.find_all(["strong", "b"]):
-        t = tag.get_text(" ", strip=True)
-        if 20 <= len(t) <= 200:
-            lead = t
-            break
-    if lead:
-        info["blurb"] = lead[:120]
-    elif info["desc"]:
-        info["blurb"] = re.split(r"(?<=[.!?])\s", info["desc"])[0][:90]
-    return info
+def _pricing_str(pricing):
+    """GoOut 'pricing' ('190–300' / '0' / None) -> text ceny pro kartu."""
+    p = (pricing or "").strip()
+    if not p:
+        return ""
+    if set(p) <= set("0–- "):
+        return "Zdarma"
+    return f"{p} Kč"
 
 
 def fetch_events(today):
-    out, seen = [], set()
     horizon = today + datetime.timedelta(weeks=WEEKS_AHEAD)
-    try:
-        r = requests.get(GOOUT_BASE, headers=UA, timeout=30)
-        r.raise_for_status()
-    except Exception as e:
-        print(f"[error] nešlo načíst GoOut: {e}", file=sys.stderr)
-        return out
-    soup = BeautifulSoup(r.text, "html.parser")
+    today_s, horizon_s = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
 
-    # akce = <a class="title" title="..." href="/cs/<slug>/<id>/">
-    for a in soup.find_all("a", attrs={"title": True, "href": re.compile(r"^/cs/")}):
-        if "title" not in (a.get("class") or []):
+    # 1) Posbírej brněnské schedules (stránkování přes meta.nextScrollId).
+    schedules, scroll, pages = [], None, 0
+    while pages < 20:
+        params = [("cityIds[]", str(GOOUT_CITY_BRNO)), ("limit", "60")]
+        if scroll:
+            params.append(("scrollId", scroll))
+        j = _api_get("schedules", params)
+        batch = (j or {}).get("schedules") or []
+        if not batch:
+            break
+        schedules += batch
+        pages += 1
+        scroll = (j.get("meta") or {}).get("nextScrollId")
+        last = ((batch[-1].get("attributes") or {}).get("startAt") or "")[:10]
+        if not scroll or (last and last > horizon_s):
+            break
+    if not schedules:
+        print("[error] GoOut API nevrátil žádné schedules", file=sys.stderr)
+        return []
+
+    # 2) Vyber schedules v horizontu a s vazbou na venue+event; posbírej ID.
+    rel = []
+    for s in schedules:
+        a = s.get("attributes") or {}
+        date = (a.get("startAt") or "")[:10]
+        if not date or date < today_s or date > horizon_s:
             continue
-        href = a.get("href", "")
-        if "/listky/" in href:
+        r = s.get("relationships") or {}
+        vid = (r.get("venue") or {}).get("id")
+        eid = (r.get("event") or {}).get("id")
+        if vid and eid:
+            rel.append((s, str(vid), str(eid)))
+    if not rel:
+        return []
+
+    venues = _fetch_entities("venues", {v for _, v, _ in rel})
+    events = _fetch_entities("events", {e for _, _, e in rel})
+    perf_ids = set()
+    for ev in events.values():
+        for p in (ev.get("relationships") or {}).get("performers") or []:
+            if p.get("id"):
+                perf_ids.add(str(p["id"]))
+    performers = _fetch_entities("performers", perf_ids) if perf_ids else {}
+
+    # 3) Sestav akce: jen naše podniky (VENUE_MAP) + hudba (mainCategory).
+    out, seen = [], set()
+    for s, vid, eid in rel:
+        venue, event = venues.get(vid), events.get(eid)
+        if not venue or not event:
             continue
-        title = (a.get("title") or "").strip()
+        app_venue = _venue_app_id(_locale_name(venue))
+        if not app_venue:
+            continue
+        cat = (event.get("attributes") or {}).get("mainCategory") or ""
+        if cat not in MUSIC_CATEGORIES:
+            continue
+        title = _locale_name(event)
         if not title:
             continue
-        card = nearest_card(a)
-        if card is None:
-            continue
-        t = card.find("time")
-        date, time = parse_iso(t.get("datetime")) if t else (None, None)
+        date, time = parse_iso((s.get("attributes") or {}).get("startAt"))
         if not date:
-            continue
-        if date < today.strftime("%Y-%m-%d") or date > horizon.strftime("%Y-%m-%d"):
-            continue
-        # kategorie = text před první čárkou v divu s časem
-        cat_div = t.find_parent("div")
-        category = cat_div.get_text(" ", strip=True).split(",")[0].strip() if cat_div else ""
-        if category.lower() not in MUSIC_CATS:
-            continue
-        # místo = další /cs/ odkaz v kartě, jehož text sedí na VENUE_MAP
-        venue_id = None
-        for va in card.find_all("a", href=re.compile(r"^/cs/")):
-            if va is a or "/listky/" in (va.get("href") or ""):
-                continue
-            vt = (va.get_text(" ", strip=True) or "").lower().strip()
-            if vt in VENUE_MAP:
-                venue_id = VENUE_MAP[vt]
-                break
-        if not venue_id:
             continue
         key = (title.lower(), date)
         if key in seen:
             continue
         seen.add(key)
+        lineup = []
+        for p in (event.get("relationships") or {}).get("performers") or []:
+            nm = _locale_name(performers.get(str(p.get("id")), {}))
+            if nm and nm not in lineup:
+                lineup.append(nm)
+        desc = ((event.get("locales") or {}).get("cs") or {}).get("description") or ""
+        desc = re.sub(r"\s+", " ", desc).strip()[:240]
+        blurb = (re.split(r"(?<=[.!?])\s", desc)[0][:90] if desc else title[:90])
         out.append({
-            "title": title, "date": date, "time": time, "venue": venue_id,
-            "genres": genre_for(title, category),
-            "ticket": "https://goout.net" + href, "category": category,
+            "title": title, "date": date, "time": time, "venue": app_venue,
+            "genres": genre_for(title, _CAT_HINT.get(cat, cat)),
+            "ticket": s.get("url") or GOOUT_BASE, "category": cat,
+            "price": _pricing_str((s.get("attributes") or {}).get("pricing")),
+            "lineup": lineup[:6], "blurb": blurb, "desc": desc,
         })
     out.sort(key=lambda e: e["date"])
-    out = out[:MAX_EVENTS]
-    if out:
-        print(f"[info] dotahuji detaily {len(out)} akcí (cena, lineup, popis)…", file=sys.stderr)
-    for e in out:
-        d = fetch_detail(e["ticket"])
-        e["price"], e["lineup"], e["blurb"], e["desc"] = d["price"], d["lineup"], d["blurb"], d["desc"]
-    return out
+    return out[:MAX_EVENTS]
 
 
 # ---------- práce s index.html ----------

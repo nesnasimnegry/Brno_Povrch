@@ -200,15 +200,19 @@ def main():
     print(f"[info] {today} — underground: GoOut + weby klubů…")
     goout = g.fetch_events(today)          # GoOut underground (s detaily)
     have = {_key(e) for e in goout}
+    have_dv = {(e["date"], e["venue"]) for e in goout}   # stejné místo+den = táž akce
     merged = list(goout)
     counts = []
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)), ("Exit", fetch_exit(today))]:
         c = 0
         for e in src:
-            if _key(e) not in have:
-                have.add(_key(e))
-                merged.append(e)
-                c += 1
+            dv = (e["date"], e["venue"])
+            if _key(e) in have or dv in have_dv:   # GoOut verze (s cenou/lineupem) má přednost
+                continue
+            have.add(_key(e))
+            have_dv.add(dv)
+            merged.append(e)
+            c += 1
         counts.append(f"{name}: +{c}")
     merged = sorted(merged, key=lambda e: e["date"])[:g.MAX_EVENTS]
     print(f"[info] GoOut: {len(goout)}, " + ", ".join(counts) + f" → celkem {len(merged)}")
