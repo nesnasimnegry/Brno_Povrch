@@ -400,7 +400,7 @@ function viewHome(){const list=modeEvents().filter(e=>e.date>=todayISO()).sort((
  <div style="margin-top:24px"><a class="btn btn-out" href="#/akce">${t("all_events")}</a></div></div></section>`;}
 function marqText(){const items=MODE==="underground"?(LANG==="cs"?["ALTERNATIVA","UNDERGROUND KLUBY","DIY SCÉNA","KONCERTY & PÁRTY","VEZMI ŠPUNTY","RESPEKTUJ PROSTOR"]:["INDEPENDENT","UNDERGROUND CLUBS","DIY SCENE","GIGS & PARTIES","BRING EARPLUGS","RESPECT THE SPACE"]):(LANG==="cs"?["MAINSTREAM","VELKÉ KONCERTY","FESTIVALY","DISKOTÉKY","KLUBOVÉ NOCI","LÍSTKY ONLINE"]:["MAINSTREAM","BIG CONCERTS","FESTIVALS","DISCOS","CLUB NIGHTS","TICKETS ONLINE"]);
  return items.map(i=>`<span>${i}</span><span class="s">✶</span>`).join("");}
-let FILT={genre:"ALL",when:"all",venue:"all"};
+let FILT={genre:"ALL",when:"all",venue:"all",free:false};
 function genreList(){return ["ALL",...Array.from(new Set(modeEvents().flatMap(e=>e.genres)))];}
 function viewAkce(){return `<section class="blk"><div class="wrap"><div class="kick">${t("nav_akce")} · ${MODE.toUpperCase()}</div>
  <h2 class="big" style="margin-bottom:22px">Program</h2>
@@ -408,13 +408,15 @@ function viewAkce(){return `<section class="blk"><div class="wrap"><div class="k
  <div class="filters"><div><label>${t("f_when")}</label><select id="fWhen">
  <option value="all" ${FILT.when==="all"?"selected":""}>${t("when_all")}</option><option value="week" ${FILT.when==="week"?"selected":""}>${t("when_week")}</option>
  <option value="weekend" ${FILT.when==="weekend"?"selected":""}>${t("when_weekend")}</option><option value="up" ${FILT.when==="up"?"selected":""}>${t("when_up")}</option></select></div>
- <div><label>${t("f_venue")}</label><select id="fVenue"><option value="all">${t("venue_all")}</option>${modeVenues().map(v=>`<option value="${v.id}" ${FILT.venue===v.id?"selected":""}>${esc(v.name)}</option>`).join("")}</select></div></div>
+ <div><label>${t("f_venue")}</label><select id="fVenue"><option value="all">${t("venue_all")}</option>${modeVenues().map(v=>`<option value="${v.id}" ${FILT.venue===v.id?"selected":""}>${esc(v.name)}</option>`).join("")}</select></div>
+ <div><label>${LANG==="cs"?"cena":"price"}</label><label style="display:flex;gap:7px;align-items:center;cursor:pointer;padding:8px 0;font-family:var(--mono);font-size:12px"><input type="checkbox" id="fFree" ${FILT.free?"checked":""}> ${LANG==="cs"?"jen zdarma":"free only"}</label></div></div>
  <div class="cards" id="akceList">${renderAkceList()}</div></div></section>`;}
 function renderAkceList(){let list=modeEvents().filter(e=>e.date>=todayISO());
  if(FILT.genre!=="ALL")list=list.filter(e=>e.genres.includes(FILT.genre));
  if(FILT.venue!=="all")list=list.filter(e=>e.venue===FILT.venue);
  if(FILT.when==="week")list=list.filter(e=>inWeek(e.date));
  if(FILT.when==="weekend")list=list.filter(e=>isWeekend(e.date));
+ if(FILT.free)list=list.filter(e=>/zdarma|free|^0\b/.test((e.price||"").toLowerCase()));
  list.sort((a,b)=>a.date.localeCompare(b.date));
  if(!list.length)return `<div class="notice">${t("empty")}</div>`;
  const tdy=todayISO(),lab=LANG==="cs"?["DNES","TENTO TÝDEN","POZDĚJI"]:["TODAY","THIS WEEK","LATER"];
@@ -566,7 +568,8 @@ function bindView(route){
   document.getElementById("genrePills")?.addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(!b)return;FILT.genre=b.dataset.g;
    document.querySelectorAll("#genrePills .pill").forEach(p=>p.classList.toggle("on",p.dataset.g===FILT.genre));document.getElementById("akceList").innerHTML=renderAkceList();});
   document.getElementById("fWhen")?.addEventListener("change",e=>{FILT.when=e.target.value;document.getElementById("akceList").innerHTML=renderAkceList();});
-  document.getElementById("fVenue")?.addEventListener("change",e=>{FILT.venue=e.target.value;document.getElementById("akceList").innerHTML=renderAkceList();});}
+  document.getElementById("fVenue")?.addEventListener("change",e=>{FILT.venue=e.target.value;document.getElementById("akceList").innerHTML=renderAkceList();});
+  document.getElementById("fFree")?.addEventListener("change",e=>{FILT.free=e.target.checked;document.getElementById("akceList").innerHTML=renderAkceList();});}
  document.getElementById("shareBtn")?.addEventListener("click",()=>{const p=(location.hash||"").replace(/^#\//,"").split("/"),url=location.href;let title="BRNO SCÉNA",text="BRNO SCÉNA — akce, kluby a mapa scény v Brně";if(p[0]==="akce"&&p[1]){const e=getAll().find(x=>x.id===p[1]);if(e){const v=V[e.venue],pd=e.date.split("-");title=e.title;text=`🎵 ${e.title} — ${+pd[2]}.${+pd[1]}. ${e.time}${v?" · "+v.name:""} | BRNO SCÉNA`;}}else if(p[0]==="klub"&&p[1]&&V[p[1]]){title=V[p[1]].name;text=`▲ ${V[p[1]].name} v Brně — program a akce | BRNO SCÉNA`;}const d={title,text,url};if(navigator.share){navigator.share(d).catch(()=>{});}else{navigator.clipboard&&navigator.clipboard.writeText(text+" "+url);alert(t("shared"));}});
  document.getElementById("addForm")?.addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);
   const ev={id:"x"+Date.now(),mode:MODE,title:f.get("title"),date:f.get("date"),time:f.get("time")||"20:00",venue:f.get("venue"),genres:[f.get("genre")],price:f.get("price")||"?",ticket:f.get("ticket")||"",featured:false,lineup:(f.get("lineup")||"").split(",").map(s=>s.trim()).filter(Boolean),blurb:(f.get("desc")||"").slice(0,90),desc:f.get("desc")||""};
