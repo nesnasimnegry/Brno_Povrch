@@ -366,6 +366,14 @@ const isFollow=(type,key)=>FOLLOWS[type].some(x=>x.toLowerCase()===String(key).t
 const toggleFollow=(type,key)=>{const a=FOLLOWS[type],i=a.findIndex(x=>x.toLowerCase()===String(key).toLowerCase());i>=0?a.splice(i,1):a.push(key);save("bu_follows",FOLLOWS);};
 const followedEvents=()=>getAll().filter(e=>e.date>=todayISO()&&(isFollow("venues",e.venue)||(e.lineup||[]).some(a=>isFollow("artists",a)))).sort((a,b)=>a.date.localeCompare(b.date));
 const followBtn=(type,key,label)=>`<button class="btn btn-out" data-follow="${type}" data-key="${esc(String(key))}"${isFollow(type,key)?' style="border-color:#ecc400;color:#ecc400"':""}>${isFollow(type,key)?"★":"☆"} ${label}</button>`;
+// --- "Do kalendáře" = odkaz do Google Kalendáře (žádné stahování, jen klik Uložit) ---
+function gcalHref(e){const v=V[e.venue],z=n=>String(n).padStart(2,"0");
+ const s=new Date(e.date+"T"+(e.time||"20:00")+":00"),en=new Date(s.getTime()+3*3600000);
+ const f=d=>""+d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+"T"+z(d.getHours())+z(d.getMinutes())+"00";
+ const p=new URLSearchParams({action:"TEMPLATE",text:e.title,dates:f(s)+"/"+f(en),ctz:"Europe/Prague",
+  location:(v?v.name+", Brno":"Brno"),
+  details:((e.lineup&&e.lineup.length)?e.lineup.join(", ")+"\n":"")+((e.ticket&&e.ticket!=="#")?e.ticket:"")});
+ return "https://calendar.google.com/calendar/render?"+p.toString();}
 const getAll=()=>EVENTS.concat(load("bu_approved",[]));
 const modeEvents=()=>getAll().filter(e=>e.mode===MODE);
 const modeVenues=()=>VENUES.filter(v=>v.mode===MODE);
@@ -428,7 +436,7 @@ function viewDetail(id){const e=getAll().find(x=>x.id===id);
  ${v?`<div class="dl-row"><div class="k">${t("venue")}</div><div class="v"><span class="accent">▲</span> ${esc(v.name)} <span class="mut">— ${esc(v.address)} · ${esc(v.district)}</span></div></div>`:""}</div></div>
  ${e.desc?`<p class="lead" style="margin-top:24px">${esc(e.desc)}</p>`:""}
  ${e.lineup.length?`<div style="margin-top:28px"><div class="kick">◤ ${t("lineup")}</div><ul class="lineup">${e.lineup.map(l=>`<li>${esc(l)} <button data-follow="artists" data-key="${esc(l)}" title="${LANG==="cs"?"sledovat umělce":"follow artist"}" style="cursor:pointer;background:none;border:1px solid #2a2724;border-radius:6px;padding:1px 8px;font-size:12px;margin-left:6px;color:${isFollow("artists",l)?"#ecc400":"#7a756b"}">${isFollow("artists",l)?"★":"☆"}</button></li>`).join("")}</ul></div>`:""}
- <div style="margin-top:26px;display:flex;flex-wrap:wrap;gap:12px">${e.ticket?`<a class="btn btn-pri" href="${e.ticket==="#"?"#/akce/"+e.id:esc(e.ticket)}" ${e.ticket==="#"?"":'target="_blank" rel="noopener"'}>${t("tickets")}</a>`:""}${COORDS[e.venue]?`<a class="btn btn-out" href="#/mapa/${e.venue}">▲ ${t("onmap")}</a>`:""}${V[e.venue]?followBtn("venues",e.venue,LANG==="cs"?"Sledovat klub":"Follow venue"):""}<button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
+ <div style="margin-top:26px;display:flex;flex-wrap:wrap;gap:12px">${e.ticket?`<a class="btn btn-pri" href="${e.ticket==="#"?"#/akce/"+e.id:esc(e.ticket)}" ${e.ticket==="#"?"":'target="_blank" rel="noopener"'}>${t("tickets")}</a>`:""}${COORDS[e.venue]?`<a class="btn btn-out" href="#/mapa/${e.venue}">▲ ${t("onmap")}</a>`:""}${V[e.venue]?followBtn("venues",e.venue,LANG==="cs"?"Sledovat klub":"Follow venue"):""}<a class="btn btn-out" href="${gcalHref(e)}" target="_blank" rel="noopener">📅 ${LANG==="cs"?"Do kalendáře":"Add to calendar"}</a><button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
  ${showMap?`<div class="map"><iframe loading="lazy" src="https://maps.google.com/maps?q=${mapQ}&z=14&output=embed"></iframe></div>`:""}</div></section>`;}
 const SPACES=["industra","sklenka","mosilana","malaamerika","vodojemy","sibir","spilberk","amfik","vankovka","semilasso"];
 function venueCard(v){const n=modeEvents().filter(e=>e.venue===v.id&&e.date>=todayISO()).length;
