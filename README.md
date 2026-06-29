@@ -1,74 +1,72 @@
-# BRNO SCÉNA — off-cloud grabber (GitHub + Netlify)
+# BRNO SCÉNA
 
-Týdenní doplňovač POVRCH akcí, který běží **zadarmo na GitHubu** a nasazuje se přes Netlify.
-Žádný Claude, žádné tokeny, žádné API klíče, žádná tajemství. Jen Python skript + cron.
+> Plně automatizovaný průvodce brněnskou klubovou a hudební scénou — underground i mainstream na jednom místě.
+> **Živě:** [snabba.pages.dev](https://snabba.pages.dev)
 
-## 📂 Co je ve složce
+Single-page web (vanilla JS, hash routing, dva módy UNDERGROUND / POVRCH) + sada Python grabberů, které **každý den** samy doplňují akce z veřejných zdrojů. Postavené tak, aby běželo **zadarmo** a **bez údržby** — žádný server, žádná databáze běžící 24/7, žádné placené služby v základu.
+
+---
+
+## ✨ Co to umí
+
+- **🤖 Plně automatický grabber.** Denně (GitHub Actions cron) stáhne nadcházející akce z **GoOut entity API** + webů brněnských klubů (Kabinet, Alterna, Exit), namapuje je na podniky a žánry a commitne do webu → Cloudflare nasadí. Nula ruční práce.
+- **🛡️ Odolnost + self-monitoring.** Grabber **nikdy nerozbije web** (atomický zápis, sanitace dat proti rozbití JS, validace před uložením). Když zdroj spadne nebo změní strukturu, **nesmaže budoucí akce** a pošle **alert e-mail** — web se hlídá sám.
+- **📧 E-mailové notifikace (full-stack).** Uživatel si **sleduje klub nebo DJ-e**; když přibude jejich akce, přijde mu personalizovaný e-mail. Odběratelé žijí v Cloudflare KV (Pages Functions), párování a rozesílání řeší grabber přes Gmail SMTP, s jednoklikovým odhlášením.
+- **🔎 SEO & sdílení.** 40 statických klubových stránek, `sitemap.xml`/`robots.txt`, JSON-LD strukturovaná data (`MusicVenue` / `Organization`) na 41 stránkách, OG/Twitter karty.
+- **📱 PWA + analytics.** Instalovatelné na mobil (manifest + ikona), Cloudflare Web Analytics (privacy-first, bez cookies).
+- **🗓️ User funkce.** Sledování (★) klubů i umělců, sekce „Sleduju", „Přidat do Google Kalendáře", filtry, fulltext, mapa klubů (Leaflet).
+
+---
+
+## 🏗️ Architektura
+
 ```
-brno-grabber/
-├── public/                  ← živý web (Netlify odsud deployuje)
-│   ├── index.html           ← appka (skript edituje pole EVENTS uvnitř)
-│   ├── *.jpg                ← fotky klubů (24)
-│   ├── klub-*.html          ← SEO stránky (40)
-│   ├── sitemap.xml, robots.txt
-├── grab_povrch.py           ← grabber (GoOut → EVENTS v index.html)
-├── requirements.txt         ← Python závislosti
-├── .github/workflows/grab.yml  ← týdenní cron (pondělí ~9:00)
-└── README.md                ← tohle
+                       ┌─────────────────────────────────────────┐
+  veřejné zdroje  ───▶ │  GitHub Actions (denní cron)             │
+  GoOut entity API     │   grab_povrch.py / grab_underground.py   │
+  weby klubů           │      → akce do public/index.html         │
+                       │   notify.py → e-maily odběratelům        │
+                       └───────────────┬─────────────────────────┘
+                                       │ git push
+                                       ▼
+                       Cloudflare Pages  ──▶  snabba.pages.dev
+                       ├─ statický web (public/)
+                       └─ Pages Functions: /subscribe /subscribers /unsubscribe
+                                       │
+                              Cloudflare KV (odběratelé)
 ```
-Všechny soubory webu už jsou v `public/` připravené — nemusíš nic stahovat.
 
-## 🛠️ Nastavení (jednorázově, ~10 minut)
+**Klíčové rozhodnutí:** web je *statický* (index.html s polem `EVENTS`), takže hosting i CDN jsou zdarma a bleskurychlé. Veškerá „dynamika" (grab, párování notifikací) běží **dávkově v CI**, ne na serveru. Drobné serverless kousky (přihlášení k odběru) řeší Cloudflare Pages Functions + KV.
 
-### 1. GitHub repo
-1. Založ si repo na github.com (klidně **Private**), např. `brno-scena`.
-2. Nahraj do něj **obsah téhle složky** (přetáhni soubory v „Add file → Upload files", nebo přes git).
-   - Důležité: zachovej strukturu — `public/` jako složka, `.github/workflows/grab.yml` jako cesta.
+## 🧩 Tech stack
+- **Frontend:** vanilla JS (jeden soubor ~85 KB), hash routing, žádný build krok
+- **Grabbery:** Python + `requests` (GoOut entity API = strukturovaný JSON, žádné křehké HTML scrapování), `BeautifulSoup` pro weby klubů
+- **Backend (lehký):** Cloudflare Pages Functions + KV (odběratelé), Gmail SMTP (rozesílání)
+- **Hosting/CI:** Cloudflare Pages (deploy = `git push`), GitHub Actions (cron + e-mail report/alert)
 
-### 2. Netlify (auto-deploy z repa)
-1. Netlify → **Add new site → Import an existing project → GitHub** → vyber repo.
-2. Nastav:
-   - **Build command:** nech prázdné
-   - **Publish directory:** `public`
-3. Deploy. Web pojede na nové `*.netlify.app` adrese.
-4. (Volitelně, abys zachoval `snabba.netlify.app`): ve starém Netlify Drop webu **Site configuration → Change site name** přejmenuj starý, pak nový pojmenuj `snabba`. Nebo prostě používej novou adresu.
+## 📂 Struktura
+```
+├── public/
+│   ├── index.html        # celá appka (pole EVENTS, id prefix: a=auto, u=underground, i=ruční)
+│   ├── klub-*.html        # 40 SEO stránek, manifest.json, sitemap.xml, robots.txt
+├── functions/             # Cloudflare Pages Functions (subscribe/subscribers/unsubscribe)
+├── grab_povrch.py         # POVRCH grabber (GoOut entity API)
+├── grab_underground.py    # UNDERGROUND grabber (GoOut + Kabinet/Alterna/Exit)
+├── notify.py              # párování nových akcí ↔ odběratelé → e-mail
+└── .github/workflows/grab.yml   # denní cron → commit → deploy + report/alert mail
+```
 
-> Od teď: **každý push do repa = automatický deploy.** Ruční nahrávání přes Netlify Drop už nepotřebuješ.
+## ▶️ Lokální vývoj
+```bash
+pip install -r requirements.txt
+python grab_povrch.py --dry-run        # vypíše, co by doplnil; NIC nezapíše
+python grab_underground.py --dry-run
+```
+Web je statický — stačí otevřít `public/index.html` (nebo `python -m http.server --directory public`).
 
-### 3. Hotovo
-GitHub Action se spustí **každé pondělí ~9:00** sama: stáhne GoOut, doplní akce do `public/index.html`, commitne → Netlify nasadí.
+## ⚙️ Jak to běží
+`git push` do `main` → Cloudflare Pages nasadí. Denní GitHub Action stáhne akce, commitne změny a (jen když něco přibylo / něco selhalo) pošle e-mailový report nebo alert. Grabbery přepisují **jen své** auto-akce (`a`/`u`), ručních (`i`), fotek ani SEO se nedotknou.
 
-## ▶️ Test
-- **Lokálně (doporučeno první):** v terminálu ve složce repa
-  ```
-  pip install -r requirements.txt
-  python grab_povrch.py --dry-run     # jen vypíše, co by doplnil, NIC nemění
-  ```
-  Zkontroluj, že to našlo rozumné akce. Když jo, můžeš pustit bez `--dry-run`.
-- **Na GitHubu:** záložka **Actions** → workflow „BRNO SCÉNA…" → **Run workflow** (tlačítko). Sleduj log + jestli vznikl commit + Netlify deploy.
+---
 
-## ⚠️ Poznámky a limity
-- **GoOut parser je heuristický.** Stránky se občas mění — proto si **první běh pusť s `--dry-run`** a koukni, jestli sedí akce. Když najednou hlásí 0 akcí, GoOut nejspíš změnil strukturu a parser chce drobný tweak (sekce `fetch_events` ve skriptu).
-- **Jen POVRCH** (GoOut). Underground kluby mají JS weby (scraper je nepřečte) — ty zatím doplňuj ručně přes formulář na webu, nebo to vyřešíme zvlášť.
-- **Bezpečnost dat:** skript NESAHÁ na underground akce, na ručně přidané akce (id „i…"), ani na fotky/SEO — přepisuje jen auto-grab akce (id „a…"). Když by se po úpravě `index.html` porušil (chybí `</html>`), NIC neuloží.
-- **Žánry řeší pravidla** (klíčová slova). Hrubší než model, ale zadarmo a bez závislosti na cloudu.
-
-## 📸 Flyer → akce (IG stories z telefonu) — fáze 1
-Underground žije na IG stories, které se scrapovat nedají. Řešení: screenshot story → nahraješ na svůj web → **Netlify funkce přečte flyer přes Claude vision** a vytáhne akci.
-
-**Soubory:** `netlify/functions/flyer.mjs` (serverless, drží AI klíč) + `public/flyer.html` (mobilní upload stránka).
-
-**Nastavení (po propojení Netlify s repem):**
-1. Netlify → Site configuration → **Environment variables**, přidej:
-   - `ANTHROPIC_API_KEY` — tvůj klíč z console.anthropic.com (placené, ale haléře za flyer)
-   - `ADMIN_PW` — heslo, ať upload nespamuje kdokoliv
-   - `ANTHROPIC_MODEL` — *(volitelné)* aktuální vision model, jinak se použije default ve funkci (ten možná budeš muset aktualizovat)
-2. Deploy. Netlify funkci najde sám (`netlify.toml` to nastavuje).
-
-**Použití z telefonu:**
-1. Uvidíš story → screenshot.
-2. Otevři `tvuj-web/flyer.html` → zadej heslo → nahraj screenshot → **Zpracovat**.
-3. Vypíše vytaženou akci (datum/místo/čas/žánr). Zatím ji **přidáš přes formulář** na webu (zkontroluješ ji).
-
-**Fáze 2 (později):** tlačítko „publikovat" přímo z téhle stránky — funkce akci sama commitne do repa a Netlify nasadí. Teď nejdřív ověřujeme, že vision z reálných brněnských flyerů čte správně.
-
+*Pet/portfolio projekt. Publikum: studenti a mladí v Brně.*
