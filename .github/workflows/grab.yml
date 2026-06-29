@@ -1,8 +1,8 @@
-name: BRNO SCENA - tydenni grab akci (POVRCH + underground)
+name: BRNO SCENA - denni grab akci (POVRCH + underground)
 
 on:
   schedule:
-    - cron: "0 7 * * 1"
+    - cron: "0 7 * * *"
   workflow_dispatch: {}
 
 permissions:
