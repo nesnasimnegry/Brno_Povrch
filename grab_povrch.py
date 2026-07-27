@@ -309,6 +309,25 @@ def item_date(item):
     return m.group(1) if m else ""
 
 
+def _norm_title(t):
+    """Název pro porovnání: bez závorek (USA)/(SK), bez interpunkce, jen slova+čísla."""
+    t = re.sub(r"\([^)]*\)", " ", (t or "").lower())
+    t = re.sub(r"[^\w ]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _same_event(t1, t2):
+    """Táž akce z jiného zdroje? Fuzzy: shodný normalizovaný název, nebo kratší je
+    (dostatečně dlouhým) podřetězcem delšího ('EXIT At The Castle' ⊂ '…| Joris Voorn')."""
+    a, b = _norm_title(t1), _norm_title(t2)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 10 and short in long
+
+
 def build_item(idx, e):
     feat = "true" if idx <= 2 else "false"
     genres = ",".join(f'"{g}"' for g in e["genres"])
@@ -362,13 +381,16 @@ def update_index(events, dry_run):
     if events:
         # Zdroj dodal akce → nahraď celý auto-blok čerstvými (jen budoucími);
         # prošlé i zmizelé auto-akce tím samy zmizí.
-        existing_pairs = set()
+        # Dedup proti ostatním akcím (druhý grabber + ruční) — fuzzy podle názvu na stejné datum.
+        # Chytá i cross-grabber duplikáty (POVRCH "a" × underground "u" na sdíleném Špilberk/Boby).
+        existing_by_date = {}
         for it in kept:
             tt = re.search(r'title\s*:\s*"([^"]*)"', it)
             dd = re.search(r'date\s*:\s*"([^"]*)"', it)
             if tt and dd:
-                existing_pairs.add((tt.group(1).lower(), dd.group(1)))
-        fresh = [e for e in events if (e["title"].lower(), e["date"]) not in existing_pairs]
+                existing_by_date.setdefault(dd.group(1), []).append(tt.group(1))
+        fresh = [e for e in events
+                 if not any(_same_event(e["title"], x) for x in existing_by_date.get(e["date"], []))]
         auto_block = [build_item(i + 1, e) for i, e in enumerate(fresh)]
         info = (f"doplněno {len(auto_block)} {MODE} "
                 f"({len(events) - len(fresh)} přeskočeno jako duplikát)")

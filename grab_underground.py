@@ -202,18 +202,21 @@ def main():
     today = datetime.date.today()
     print(f"[info] {today} — underground: GoOut + weby klubů…")
     goout = g.fetch_events(today)          # GoOut underground (s detaily)
-    have = {_key(e) for e in goout}
     have_dv = {(e["date"], e["venue"]) for e in goout}   # stejné místo+den = táž akce
+    titles_by_date = {}                                  # datum -> [názvy] pro fuzzy dedup
+    for e in goout:
+        titles_by_date.setdefault(e["date"], []).append(e["title"])
     merged = list(goout)
     counts = []
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)), ("Exit", fetch_exit(today))]:
         c = 0
         for e in src:
-            dv = (e["date"], e["venue"])
-            if _key(e) in have or dv in have_dv:   # GoOut verze (s cenou/lineupem) má přednost
+            # Duplikát vůči už zařazeným? Fuzzy název NEBO stejné místo+den. GoOut má přednost.
+            if (e["date"], e["venue"]) in have_dv or \
+               any(g._same_event(e["title"], t) for t in titles_by_date.get(e["date"], [])):
                 continue
-            have.add(_key(e))
-            have_dv.add(dv)
+            have_dv.add((e["date"], e["venue"]))
+            titles_by_date.setdefault(e["date"], []).append(e["title"])
             merged.append(e)
             c += 1
         counts.append(f"{name}: +{c}")
