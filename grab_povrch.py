@@ -74,6 +74,35 @@ WARNINGS = []
 
 
 # ---------- žánry podle pravidel ----------
+# GoOut žánrové tagy u akcí (event.attributes.tags) → naše zobrazované žánry.
+_TAG_MAP = {
+    "rock": "ROCK", "metal": "METAL", "punk": "PUNK", "hardcore": "PUNK",
+    "folk": "FOLK", "folklore": "FOLK", "singer_songwriter": "FOLK", "country": "FOLK",
+    "jazz_blues_swing": "JAZZ", "jazz": "JAZZ", "blues": "JAZZ", "swing": "JAZZ",
+    "classical": "KLASIKA", "opera": "KLASIKA",
+    "pop": "POP", "hiphop": "HIP HOP", "hip_hop": "HIP HOP", "rap": "HIP HOP",
+    "electronic": "ELEKTRO", "techno": "TECHNO", "house": "HOUSE",
+    "drum_and_bass": "DNB", "dnb": "DNB", "trance": "TECHNO",
+    "alternative": "ALTERNATIVA", "indie": "INDIE",
+    "reggae_ska": "REGGAE", "reggae": "REGGAE", "ska": "REGGAE",
+    "world_music": "WORLD", "world": "WORLD",
+    "experimental": "EXPERIMENT", "ambient": "EXPERIMENT", "noise": "EXPERIMENT",
+    "disco": "DISKO", "funk_soul": "FUNK", "funk": "FUNK", "soul": "FUNK",
+}
+
+
+def event_genres(main_category, tags, title):
+    """Žánry akce: přednostně z GoOut tagů (skutečné žánry), jinak heuristika z názvu."""
+    out = []
+    for tg in (tags or []):
+        d = _TAG_MAP.get(tg)
+        if d and d not in out:
+            out.append(d)
+    if out:
+        return out[:3]
+    return genre_for(title, _CAT_HINT.get(main_category, main_category))
+
+
 def genre_for(title, category):
     t = (title + " " + category).lower()
     if any(k in t for k in ["techno", "house", "rave", "dnb", "drum and bass", "acid", "trance", "hardtek"]):
@@ -271,7 +300,7 @@ def fetch_events(today):
         blurb = (re.split(r"(?<=[.!?])\s", desc)[0][:90] if desc else title[:90])
         out.append({
             "title": title, "date": date, "time": time, "venue": correct_venue(title, app_venue),
-            "genres": genre_for(title, _CAT_HINT.get(cat, cat)),
+            "genres": event_genres(cat, (event.get("attributes") or {}).get("tags"), title),
             "ticket": s.get("url") or GOOUT_BASE, "category": cat,
             "price": _pricing_str((s.get("attributes") or {}).get("pricing")),
             "lineup": lineup[:6], "blurb": blurb, "desc": desc,
