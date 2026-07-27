@@ -407,7 +407,8 @@ function fmtDate(ds,time){const d=new Date(ds+"T"+(time||"20:00")+":00");const l
  return {wd:d.toLocaleDateString(loc,{weekday:"short"}).toUpperCase().replace(".",""),day:d.toLocaleDateString(loc,{day:"2-digit"}),mo:d.toLocaleDateString(loc,{month:"short"}).toUpperCase().replace(".",""),full:d.toLocaleDateString(loc,{weekday:"long",day:"numeric",month:"long"})};}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const todayISO=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Prague"});
-const weekEndISO=()=>{const d=new Date(todayISO()+"T12:00:00Z");const dow=d.getUTCDay();d.setUTCDate(d.getUTCDate()+(dow===0?0:7-dow));return d.toISOString().slice(0,10);};
+const plusDaysISO=n=>{const d=new Date(todayISO()+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+const weekEndISO=()=>plusDaysISO(7);   // "tento týden" = dnes + 7 dní (rolling)
 const inWeek=ds=>ds>=todayISO()&&ds<=weekEndISO();
 const isWeekend=ds=>{const g=new Date(ds+"T12:00:00Z").getUTCDay();return g===5||g===6||g===0;};
 function eventCard(e){const v=V[e.venue],d=fmtDate(e.date,e.time),img=VIMG[e.venue],dstyle=img?` style="background-image:linear-gradient(rgba(12,11,10,.45),rgba(12,11,10,.78)),url('${img}');background-size:cover;background-position:center"`:"";
