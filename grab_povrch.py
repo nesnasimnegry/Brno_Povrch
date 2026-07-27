@@ -172,6 +172,23 @@ def _pricing_str(pricing):
     return f"{p} Kč"
 
 
+# Promotéři (hlavně Exit) dělají akce jinde, než sídlí → GoOut je vede pod domovským
+# klubem. Podle názvu srovnej na skutečné místo konání. Sdílené i grab_underground.py.
+VENUE_TITLE_HINTS = [
+    (r"na hrad|at the castle|špilberk|spilberk|spilas", "spilberk"),
+    (r"\bboby\b|boby ?hall|bobycentrum", "boby"),
+    (r"vaňkov|vankov", "vankovka"),
+]
+
+
+def correct_venue(title, venue):
+    t = (title or "").lower()
+    for pat, vid in VENUE_TITLE_HINTS:
+        if re.search(pat, t):
+            return vid
+    return venue
+
+
 def fetch_events(today):
     horizon = today + datetime.timedelta(weeks=WEEKS_AHEAD)
     today_s, horizon_s = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
@@ -253,7 +270,7 @@ def fetch_events(today):
         desc = re.sub(r"\s+", " ", desc).strip()[:240]
         blurb = (re.split(r"(?<=[.!?])\s", desc)[0][:90] if desc else title[:90])
         out.append({
-            "title": title, "date": date, "time": time, "venue": app_venue,
+            "title": title, "date": date, "time": time, "venue": correct_venue(title, app_venue),
             "genres": genre_for(title, _CAT_HINT.get(cat, cat)),
             "ticket": s.get("url") or GOOUT_BASE, "category": cat,
             "price": _pricing_str((s.get("attributes") or {}).get("pricing")),
