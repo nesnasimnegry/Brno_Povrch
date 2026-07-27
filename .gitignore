@@ -2,4 +2,5 @@ __pycache__/
 *.pyc
 report.txt
 alert.txt
-.claude/
+.claude/*
+!.claude/skills/
