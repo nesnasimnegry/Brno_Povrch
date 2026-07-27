@@ -185,7 +185,12 @@
   @keyframes photoIn{from{opacity:0}}
   .hero-photo{animation:photoIn 1.1s ease}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .map-loading{display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--muted)}
+  .map-loading{display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:12px;letter-spacing:.22em;color:var(--muted);position:relative;z-index:1}
+  /* skeleton: drží místo, než dorazí fotka nebo mapa */
+  .skel{position:relative;background:var(--bg)}
+  .skel::after{content:"";position:absolute;inset:0;background:var(--bg) linear-gradient(100deg,transparent 25%,rgba(239,234,224,.06) 45%,transparent 65%);background-size:250% 100%;animation:shimmer 1.4s linear infinite;pointer-events:none}
+  .skel-img{opacity:0;transition:opacity .35s ease}
+  @keyframes shimmer{from{background-position:170% 0}to{background-position:-70% 0}}
   .map-loading::before{content:"";width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;display:inline-block;margin-right:10px;animation:spin .8s linear infinite}
   @media(max-width:560px){
     .bar{gap:8px;padding:11px 14px}
@@ -439,7 +444,7 @@ function viewDetail(id){const e=getAll().find(x=>x.id===id);
  ${e.desc?`<p class="lead" style="margin-top:24px">${esc(e.desc)}</p>`:""}
  ${e.lineup.length?`<div style="margin-top:28px"><div class="kick">◤ ${t("lineup")}</div><ul class="lineup">${e.lineup.map(l=>`<li>${esc(l)} <button data-follow="artists" data-key="${esc(l)}" title="${LANG==="cs"?"sledovat umělce":"follow artist"}" style="cursor:pointer;background:none;border:1px solid #2a2724;border-radius:6px;padding:1px 8px;font-size:12px;margin-left:6px;color:${isFollow("artists",l)?"#ecc400":"#7a756b"}">${isFollow("artists",l)?"★":"☆"}</button></li>`).join("")}</ul></div>`:""}
  <div style="margin-top:26px;display:flex;flex-wrap:wrap;gap:12px">${e.ticket?`<a class="btn btn-pri" href="${e.ticket==="#"?"#/akce/"+e.id:esc(e.ticket)}" ${e.ticket==="#"?"":'target="_blank" rel="noopener"'}>${t("tickets")}</a>`:""}${COORDS[e.venue]?`<a class="btn btn-out" href="#/mapa/${e.venue}">▲ ${t("onmap")}</a>`:""}${V[e.venue]?followBtn("venues",e.venue,LANG==="cs"?"Sledovat klub":"Follow venue"):""}<a class="btn btn-out" href="${gcalHref(e)}" target="_blank" rel="noopener">📅 ${LANG==="cs"?"Do kalendáře":"Add to calendar"}</a><button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
- ${showMap?`<div class="map"><iframe loading="lazy" src="https://maps.google.com/maps?q=${mapQ}&z=14&output=embed"></iframe></div>`:""}</div></section>`;}
+ ${showMap?`<div class="map skel"><iframe loading="lazy" onload="this.parentNode.classList.remove('skel')" src="https://maps.google.com/maps?q=${mapQ}&z=14&output=embed"></iframe></div>`:""}</div></section>`;}
 const SPACES=["industra","sklenka","mosilana","malaamerika","vodojemy","sibir","spilberk","amfik","vankovka","semilasso"];
 function venueCard(v){const n=modeEvents().filter(e=>e.venue===v.id&&e.date>=todayISO()).length;
  return `<a class="venue" href="#/klub/${v.id}"><h3>${esc(v.name)}</h3><div class="addr">▲ ${esc(v.address)} · ${esc(v.district)}</div><div class="cnt">${n} ${t("upcoming_n")} →</div></a>`;}
@@ -456,13 +461,13 @@ function viewVenue(id){const v=V[id];
   <a class="back" href="#/kluby">${LANG==="cs"?"← zpět na kluby":"← back to venues"}</a>
   <div class="kick" style="margin-top:16px">◤ ${v.mode.toUpperCase()}</div>
   <h1 class="title" style="font-size:clamp(38px,7vw,82px)">${esc(v.name)}</h1>
-  ${VIMG[id]?`<div style="position:relative;margin-top:18px;max-width:460px;border:1px solid #2a2724;border-radius:10px;overflow:hidden"><img src="${VIMG[id]}" alt="${esc(v.name)}" loading="lazy" style="display:block;width:100%;aspect-ratio:3/2;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,11,10,.38),transparent 60%);pointer-events:none"></div></div>`:""}
+  ${VIMG[id]?`<div class="skel" style="position:relative;margin-top:18px;max-width:460px;border:1px solid #2a2724;border-radius:10px;overflow:hidden;aspect-ratio:3/2"><img class="skel-img" src="${VIMG[id]}" alt="${esc(v.name)}" loading="lazy" onload="this.style.opacity=1;this.parentNode.classList.remove('skel')" onerror="this.style.opacity=1;this.parentNode.classList.remove('skel')" style="display:block;width:100%;aspect-ratio:3/2;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,11,10,.38),transparent 60%);pointer-events:none"></div></div>`:""}
   <p class="lead" style="margin-top:18px">${esc(v.desc)}</p>
   <div class="dl-row" style="margin-top:16px"><div class="k">${t("venue")}</div><div class="v"><span class="accent">▲</span> ${esc(v.address)} · ${esc(v.district)}</div></div>
   ${v.web?`<div class="dl-row"><div class="k">web</div><div class="v"><a href="${esc(v.web)}" target="_blank" rel="noopener">${LANG==="cs"?"web / sítě ↗":"website ↗"}</a></div></div>`:""}
   <div class="dl-row"><div class="k">${LANG==="cs"?"navigace":"directions"}</div><div class="v"><a href="https://www.google.com/maps/search/?api=1&query=${mapQ}" target="_blank" rel="noopener">${LANG==="cs"?"otevřít v Mapách ↗":"open in Maps ↗"}</a></div></div>
   <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:12px">${followBtn("venues",id,LANG==="cs"?"Sledovat klub":"Follow venue")}${COORDS[id]?`<a class="btn btn-out" href="#/mapa/${id}">▲ ${t("onmap")}</a>`:""}<button class="btn btn-out" id="shareBtn">⇪ ${t("share")}</button></div>
-  ${showMap?`<div class="map"><iframe loading="lazy" src="https://maps.google.com/maps?q=${mapQ}&z=15&output=embed"></iframe></div>`:""}
+  ${showMap?`<div class="map skel"><iframe loading="lazy" onload="this.parentNode.classList.remove('skel')" src="https://maps.google.com/maps?q=${mapQ}&z=15&output=embed"></iframe></div>`:""}
   <h2 class="big" style="font-size:30px;margin:36px 0 18px">${LANG==="cs"?"Nadcházející akce":"Upcoming events"}</h2>
   <div class="cards">${evs.length?evs.map(eventCard).join(""):`<div class="notice">${t("empty")}</div>`}</div>
  </div></section>`;}
@@ -506,7 +511,7 @@ function renderSearch(){const q=SEARCH.trim().toLowerCase();
  return h;}
 function viewMapa(){return `<section class="blk"><div class="wrap"><div class="kick">◤ ${LANG==="cs"?"MAPA KLUBŮ":"VENUE MAP"}</div>
  <h2 class="big" style="margin-bottom:20px">${LANG==="cs"?"Mapa scény":"Scene map"}</h2>
- <div id="leafmap" style="height:68vh;border:2px solid var(--border)"><div class="map-loading">${LANG==="cs"?"načítám mapu…":"loading map…"}</div></div>
+ <div id="leafmap" class="skel" style="height:68vh;border:2px solid var(--border)"><div class="map-loading">${LANG==="cs"?"načítám mapu…":"loading map…"}</div></div>
  <div class="mut mono" style="font-size:11px;margin-top:10px">${LANG==="cs"?"● underground · ○ public. Polohy jsou orientační — klikni na bod pro detail klubu.":"● underground · ○ public. Positions approximate — click a dot for venue detail."}</div></div></section>`;}
 function viewPridat(){return `<section class="blk"><div class="wrap"><div class="kick">${t("add_kick")} · ${MODE.toUpperCase()}</div>
  <h2 class="big" style="margin-bottom:14px">${t("add_t")}</h2><div class="notice" style="margin-bottom:22px">${t("add_hint")}</div>
@@ -555,6 +560,8 @@ function router(noScroll){const parts=(location.hash||"#/").replace(/^#\//,"").s
  document.getElementById("app").innerHTML=html;renderChrome();renderFooter();bindView(route);
  document.getElementById("nav").classList.remove("open");if(!noScroll)window.scrollTo(0,0);}
 function bindView(route){
+ // pojistka: kdyby se mapa nenacetla (blokovana/offline), neblikej skeletonem donekonecna
+ setTimeout(()=>document.querySelectorAll(".map.skel").forEach(el=>el.classList.remove("skel")),8000);
  if(route==="hledat"){const si=document.getElementById("searchInput");if(si){si.addEventListener("input",e=>{SEARCH=e.target.value;document.getElementById("searchResults").innerHTML=renderSearch();});si.focus();}}
  if(route==="mapa"&&window.L){const m=L.map("leafmap",{scrollWheelZoom:true,zoomControl:true}).setView([49.197,16.607],13);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap, © CARTO"}).addTo(m);
@@ -562,7 +569,7 @@ function bindView(route){
   VENUES.filter(v=>v.mode===MODE).forEach(v=>{const c=COORDS[v.id];if(!c)return;const col=v.mode==="underground"?"#ecc400":"#37d4e6";marks[v.id]=L.circleMarker(c,{radius:8,color:col,weight:2,fillColor:col,fillOpacity:.55}).addTo(m).bindTooltip(esc(v.name),{permanent:true,direction:"top",offset:[0,-4],className:"vlabel"}).bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.district)}<br><a href="#/klub/${v.id}">${LANG==="cs"?"detail klubu →":"venue detail →"}</a>`);});
   if(focus&&marks[focus]){m.setView(COORDS[focus],16);marks[focus].openPopup();}
   const upd=()=>m.getContainer().classList.toggle("zoomed",m.getZoom()>=15);m.on("zoom",upd);upd();
-  const ph=m.getContainer().querySelector(".map-loading");if(ph)ph.remove();
+  const ph=m.getContainer().querySelector(".map-loading");if(ph)ph.remove();m.getContainer().classList.remove("skel");
   setTimeout(()=>m.invalidateSize(),120);}
  if(route==="akce"&&!location.hash.split("/")[2]){
   document.getElementById("genrePills")?.addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(!b)return;FILT.genre=b.dataset.g;
