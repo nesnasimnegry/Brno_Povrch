@@ -55,7 +55,8 @@ VENUE_MAP = {
     "yacht": "yacht", "tabarin": "tabarin", "disco xxl": "discoxxl",
     "music lab": "musiclab", "pitkin": "pitkin", "charlie's hat": "charlieshat",
     "vn club": "vnclub", "leitner": "leitner", "typos": "typos",
-    "amfiteátr řečkovice": "amfik", "špilberk": "spilberk", "teepee": "teepee",
+    "amfiteátr řečkovice": "amfik", "amfiteátr kraví hora": "kravihora",
+    "špilberk": "spilberk", "teepee": "teepee",
     "galerie vaňkovka": "vankovka", "vaňkovka": "vankovka",
 }
 
