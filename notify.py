@@ -39,8 +39,8 @@ def _field(item, name):
     return m.group(1).replace('\\"', '"').replace("\\\\", "\\") if m else ""
 
 
-def _lineup(item):
-    m = re.search(r"lineup\s*:\s*\[([^\]]*)\]", item)
+def _arr(item, name):
+    m = re.search(name + r"\s*:\s*\[([^\]]*)\]", item)
     if not m:
         return []
     return [x.replace('\\"', '"') for x in re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))]
@@ -79,7 +79,9 @@ def parse_events():
     for it in g.split_items(src[start + 1:end]):
         e = {
             "id": g.item_id(it), "date": g.item_date(it), "venue": _field(it, "venue"),
-            "title": _field(it, "title"), "lineup": _lineup(it), "ticket": _field(it, "ticket"),
+            "title": _field(it, "title"), "lineup": _arr(it, "lineup"), "ticket": _field(it, "ticket"),
+            "time": _field(it, "time"), "price": _field(it, "price"),
+            "genres": _arr(it, "genres"), "venueName": _field(it, "venueName"),
         }
         if e["date"] and e["title"]:
             e["key"] = f'{e["date"]}|{e["venue"]}|{e["title"].lower().strip()[:60]}'
@@ -109,26 +111,117 @@ def fetch_subscribers():
         return None
 
 
+_MONTHS_CS = ["LED", "ÚNO", "BŘE", "DUB", "KVĚ", "ČVN", "ČVC", "SRP", "ZÁŘ", "ŘÍJ", "LIS", "PRO"]
+_VNAMES = None
+
+
+def venue_names():
+    """{id venue: název} z pole VENUES v index.html — ať mail píše 'Kabinet múz', ne 'kabinet'."""
+    global _VNAMES
+    if _VNAMES is None:
+        _VNAMES = {}
+        src = open(g.INDEX_FILE, encoding="utf-8").read()
+        m = re.search(r"const VENUES=\[", src)
+        if m:
+            start = m.end() - 1
+            depth, in_str, q, esc, end = 0, False, "", False, None
+            for i in range(start, len(src)):
+                ch = src[i]
+                if in_str:
+                    if esc: esc = False
+                    elif ch == "\\": esc = True
+                    elif ch == q: in_str = False
+                    continue
+                if ch in "\"'": in_str, q = True, ch
+                elif ch == "[": depth += 1
+                elif ch == "]":
+                    depth -= 1
+                    if depth == 0: end = i; break
+            block = src[start:end] if end else ""
+            _VNAMES = {vid: nm.replace('\\"', '"') for vid, nm in
+                       re.findall(r'id:"([a-z0-9]+)"[^}]*?name:"((?:[^"\\]|\\.)*)"', block)}
+    return _VNAMES
+
+
+def _plural(n, one, few, many):
+    return one if n == 1 else (few if 2 <= n <= 4 else many)
+
+
+def _event_card(e):
+    esc = html.escape
+    d = e["date"]
+    day, mon = str(int(d[8:10])), _MONTHS_CS[int(d[5:7]) - 1]
+    vname = venue_names().get(e["venue"]) or e.get("venueName") or e["venue"]
+    time = f' · {esc(e["time"])}' if e.get("time") else ""
+    meta = " · ".join([x for x in e.get("genres", [])][:3])
+    price = e.get("price", "")
+    if price and (any(c.isdigit() for c in price) or "zdarma" in price.lower()):
+        meta = (meta + "  ·  " if meta else "") + esc(price)
+    tick = ""
+    if e["ticket"] and e["ticket"] != "#":
+        tick = (f'<a href="{esc(e["ticket"])}" style="display:inline-block;margin-top:11px;'
+                f'font-family:\'Courier New\',monospace;font-size:12px;letter-spacing:.08em;'
+                f'color:#ecc400;text-decoration:none;border-bottom:1px solid #7a5f00;'
+                f'padding-bottom:2px;">VSTUPENKY →</a>')
+    return (
+        '<tr><td style="padding:0 0 12px;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation" '
+        'style="background:#141210;border:1px solid #26231f;border-radius:12px;"><tr>'
+        '<td width="72" valign="top" style="padding:18px 4px 18px 14px;text-align:center;">'
+        f'<div style="font-family:\'Courier New\',monospace;color:#ecc400;font-size:26px;font-weight:700;line-height:1;">{day}</div>'
+        f'<div style="font-family:\'Courier New\',monospace;color:#8a857b;font-size:11px;letter-spacing:.18em;margin-top:4px;">{mon}</div>'
+        '</td>'
+        '<td valign="top" style="padding:17px 16px 17px 8px;font-family:Arial,Helvetica,sans-serif;">'
+        f'<div style="font-size:17px;font-weight:700;color:#efeae0;line-height:1.28;">{esc(e["title"])}</div>'
+        f'<div style="font-size:13px;color:#b7b1a6;margin-top:6px;">▲ {esc(vname)}{time}</div>'
+        + (f'<div style="font-family:\'Courier New\',monospace;font-size:11px;color:#8a857b;letter-spacing:.06em;margin-top:9px;">{meta}</div>' if meta else "")
+        + tick +
+        '</td></tr></table></td></tr>'
+    )
+
+
+def build_email(to, token, evs):
+    """Vrátí (předmět, HTML tělo) notifikačního mailu — oddělené od odesílání kvůli náhledu."""
+    n = len(evs)
+    cards = "".join(_event_card(e) for e in evs[:MAX_PER_MAIL])
+    unsub = f'{SITE}/unsubscribe?e={html.escape(to)}&t={html.escape(token)}'
+    intro = ("U klubu nebo DJ-e, co sleduješ, přibyla akce. Ať ti neuteče:"
+             if n == 1 else "U toho, co sleduješ, přibylo pár akcí. Ať ti žádná neuteče:")
+    body = (
+        '<!doctype html><html><body style="margin:0;padding:0;background:#0c0b0a;">'
+        '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#0c0b0a;">'
+        '<tr><td align="center" style="padding:30px 14px;">'
+        '<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;">'
+        # header
+        '<tr><td style="padding:2px 6px 24px;">'
+        '<div style="font-family:\'Courier New\',monospace;font-size:12px;letter-spacing:.24em;color:#ecc400;">◤ TVÁ SCÉNA V BRNĚ</div>'
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:32px;font-weight:800;letter-spacing:-.5px;color:#efeae0;margin-top:9px;">BRNO SCÉNA</div>'
+        '</td></tr>'
+        # intro
+        f'<tr><td style="padding:0 6px 22px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#c9c3b8;line-height:1.55;">{intro}</td></tr>'
+        # cards
+        + cards +
+        # CTA
+        '<tr><td style="padding:10px 6px 30px;">'
+        f'<a href="{SITE}/#/sleduju" style="display:inline-block;background:#ecc400;color:#161208;'
+        'font-family:\'Courier New\',monospace;font-weight:700;font-size:13px;letter-spacing:.12em;'
+        'text-decoration:none;padding:15px 26px;border-radius:2px;">CELÝ PROGRAM →</a></td></tr>'
+        # footer
+        '<tr><td style="border-top:1px solid #26231f;padding:20px 6px 4px;font-family:\'Courier New\',monospace;'
+        'font-size:11px;color:#7a756b;line-height:1.8;">'
+        'Chodí ti to, protože na BRNO SCÉNA sleduješ kluby a DJ-e.<br>'
+        f'Nechceš už? <a href="{unsub}" style="color:#ecc400;text-decoration:none;">Odhlásit jedním klikem</a>.'
+        '</td></tr></table></td></tr></table></body></html>'
+    )
+    subj = ("Přibyla nová akce u tvých oblíbených" if n == 1
+            else f"Přibyly {n} " + _plural(n, "", "nové akce", "nových akcí").strip() + " u tvých oblíbených")
+    return subj, body
+
+
 def send_mail(to, token, evs):
     user, pw = os.environ["GMAIL_USER"], os.environ["GMAIL_APP_PASSWORD"]
-    rows = ""
-    for e in evs[:MAX_PER_MAIL]:
-        tick = (f' · <a href="{html.escape(e["ticket"])}">vstupenky</a>'
-                if e["ticket"] and e["ticket"] != "#" else "")
-        rows += (f'<li style="margin:9px 0"><b>{html.escape(e["title"])}</b><br>'
-                 f'<span style="color:#777">{e["date"]} · {html.escape(e["venue"])}</span>{tick}</li>')
-    unsub = f'{SITE}/unsubscribe?e={html.escape(to)}&t={html.escape(token)}'
-    body = (
-        '<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;color:#161208">'
-        '<h2>BRNO SCÉNA — nové akce u tvých oblíbených</h2>'
-        f'<ul style="padding-left:18px">{rows}</ul>'
-        f'<p><a href="{SITE}/#/sleduju">Otevřít na webu →</a></p>'
-        '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">'
-        '<p style="font-size:12px;color:#999">Dostáváš to, protože sleduješ kluby/umělce na BRNO SCÉNA. '
-        f'<a href="{unsub}">Odhlásit se</a>.</p></div>'
-    )
+    subj, body = build_email(to, token, evs)
     msg = MIMEText(body, "html", "utf-8")
-    msg["Subject"] = f"BRNO SCÉNA — {len(evs)} {'nová akce' if len(evs) == 1 else 'nových akcí'} pro tebe"
+    msg["Subject"] = subj
     msg["From"] = formataddr(("BRNO SCÉNA", user))
     msg["To"] = to
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
