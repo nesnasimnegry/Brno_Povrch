@@ -410,15 +410,19 @@ const getPending=()=>load("bu_pending",[]);
 function fmtDate(ds,time){const d=new Date(ds+"T"+(time||"20:00")+":00");const loc=LANG==="cs"?"cs-CZ":"en-GB";
  return {wd:d.toLocaleDateString(loc,{weekday:"short"}).toUpperCase().replace(".",""),day:d.toLocaleDateString(loc,{day:"2-digit"}),mo:d.toLocaleDateString(loc,{month:"short"}).toUpperCase().replace(".",""),full:d.toLocaleDateString(loc,{weekday:"long",day:"numeric",month:"long"})};}
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// EN popisky pro české žánrové tagy a cenové placeholdery (data zůstávají česká, překládá se jen zobrazení)
+const GENRE_EN={KONCERT:"CONCERT","PÁRTY":"PARTY",KLASIKA:"CLASSICAL",DISKO:"DISCO",ELEKTRO:"ELECTRO",ALTERNATIVA:"ALT",EXPERIMENT:"EXPERIMENTAL",FUNK:"FUNK"};
+const gLabel=g=>LANG==="en"?(GENRE_EN[g]||g):g;
+const priceLabel=p=>{if(LANG!=="en"||!p)return p;return String(p).replace(/vstupenky na /gi,"tickets @ ").replace(/vstupenky /gi,"tickets @ ").replace(/^vstupenky$/i,"tickets").replace(/Zdarma/gi,"Free").replace(/vyprodáno/gi,"sold out");};
 const todayISO=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Prague"});
 const plusDaysISO=n=>{const d=new Date(todayISO()+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const weekEndISO=()=>plusDaysISO(7);   // "tento týden" = dnes + 7 dní (rolling)
 const inWeek=ds=>ds>=todayISO()&&ds<=weekEndISO();
 const isWeekend=ds=>{const g=new Date(ds+"T12:00:00Z").getUTCDay();return g===5||g===6||g===0;};
 function eventCard(e){const v=V[e.venue],d=fmtDate(e.date,e.time),img=VIMG[e.venue],dstyle=img?` style="background-image:linear-gradient(rgba(12,11,10,.45),rgba(12,11,10,.78)),url('${img}');background-size:cover;background-position:center"`:"";
- const badges=e.genres.map(g=>`<span class="gtag">${g}</span>`).join("")+(e.featured?`<span class="gtag feat">★</span>`:"");
+ const badges=e.genres.map(g=>`<span class="gtag">${gLabel(g)}</span>`).join("")+(e.featured?`<span class="gtag feat">★</span>`:"");
  return `<a class="card" href="#/akce/${e.id}"><div class="date"${dstyle}><div class="wd">${d.wd}</div><div class="dd">${d.day}</div><div class="mo">${d.mo}</div></div>
- <div class="body"><div class="badges">${badges}<span class="meta">· ${e.time} · ${esc(e.price)}</span></div><h3>${esc(e.title)}</h3>
+ <div class="body"><div class="badges">${badges}<span class="meta">· ${e.time} · ${esc(priceLabel(e.price))}</span></div><h3>${esc(e.title)}</h3>
  <div class="blurb">${esc(e.blurb)}</div><div class="ven"><span><span class="accent">▲</span> ${esc(v?v.name:"")}</span><span>${esc(v?v.district:"")}</span></div>
  <div class="lin">${e.lineup.map(esc).join("  /  ")}</div></div></a>`;}
 function renderHomeList(){let l=modeEvents().filter(e=>e.date>=todayISO());if(FILT.genre!=="ALL")l=l.filter(e=>e.genres.includes(FILT.genre));l.sort((a,b)=>a.date.localeCompare(b.date));return l.slice(0,6).map(eventCard).join("")||`<div class="notice">${t("empty")}</div>`;}
@@ -428,7 +432,7 @@ function viewHome(){const c=mc();
  <p class="lead">${c.lead}</p><div class="hero-cta"><a class="btn btn-pri" href="#/akce">${t("hero_cta")}</a></div></div></section>
  <div class="marq"><div class="marq-inner"><div class="marq-track">${marqText()}${marqText()}</div></div></div>
  <section class="blk"><div class="wrap"><div class="sec-head"><div><div class="kick">${t("week_kick")}</div><h2 class="big">${t("week_t1")}<br><span class="pri">${t("week_t2")}</span></h2></div><div class="note">${t("week_hint")}</div></div>
- <div class="pills" id="homeGenrePills" style="margin-bottom:18px">${genreList().map(g=>`<button class="pill ${FILT.genre===g?"on":""}" data-g="${g}">${g==="ALL"?t("all"):g}</button>`).join("")}</div>
+ <div class="pills" id="homeGenrePills" style="margin-bottom:18px">${genreList().map(g=>`<button class="pill ${FILT.genre===g?"on":""}" data-g="${g}">${g==="ALL"?t("all"):gLabel(g)}</button>`).join("")}</div>
  <div class="cards" id="homeCards">${renderHomeList()}</div>
  <div style="margin-top:24px"><a class="btn btn-out" href="#/akce">${t("all_events")}</a></div></div></section>`;}
 function marqText(){const items=MODE==="underground"?(LANG==="cs"?["ALTERNATIVA","UNDERGROUND KLUBY","DIY SCÉNA","KONCERTY & PÁRTY","VEZMI ŠPUNTY","RESPEKTUJ PROSTOR"]:["INDEPENDENT","UNDERGROUND CLUBS","DIY SCENE","GIGS & PARTIES","BRING EARPLUGS","RESPECT THE SPACE"]):(LANG==="cs"?["MAINSTREAM","VELKÉ KONCERTY","FESTIVALY","DISKOTÉKY","KLUBOVÉ NOCI","LÍSTKY ONLINE"]:["MAINSTREAM","BIG CONCERTS","FESTIVALS","DISCOS","CLUB NIGHTS","TICKETS ONLINE"]);
@@ -437,7 +441,7 @@ let FILT={genre:"ALL",when:"all",venue:"all",free:false};
 function genreList(){return ["ALL",...Array.from(new Set(modeEvents().flatMap(e=>e.genres)))];}
 function viewAkce(){return `<section class="blk"><div class="wrap"><div class="kick">${t("nav_akce")} · ${MODE.toUpperCase()}</div>
  <h2 class="big" style="margin-bottom:22px">Program</h2>
- <div class="pills" id="genrePills">${genreList().map(g=>`<button class="pill ${FILT.genre===g?"on":""}" data-g="${g}">${g==="ALL"?t("all"):g}</button>`).join("")}</div>
+ <div class="pills" id="genrePills">${genreList().map(g=>`<button class="pill ${FILT.genre===g?"on":""}" data-g="${g}">${g==="ALL"?t("all"):gLabel(g)}</button>`).join("")}</div>
  <div class="filters"><div><label>${t("f_when")}</label><select id="fWhen">
  <option value="all" ${FILT.when==="all"?"selected":""}>${t("when_all")}</option><option value="week" ${FILT.when==="week"?"selected":""}>${t("when_week")}</option>
  <option value="weekend" ${FILT.when==="weekend"?"selected":""}>${t("when_weekend")}</option><option value="up" ${FILT.when==="up"?"selected":""}>${t("when_up")}</option></select></div>
@@ -463,11 +467,11 @@ function viewDetail(id){const e=getAll().find(x=>x.id===id);
  const showMap=v&&(!v.address||!v.address.includes("SMS"))&&!/lom|ruina/i.test(v.address||"");
  const mapQ=v?encodeURIComponent(v.name+", Brno"):"Brno";
  return `<section class="blk"><div class="wrap"><a class="back" href="#/akce">${t("back")}</a>
- <div class="badges" style="margin-top:18px">${e.genres.map(g=>`<span class="gtag">${g}</span>`).join("")}${e.featured?`<span class="gtag feat">★</span>`:""}<span class="meta">· ${e.mode.toUpperCase()}</span></div>
+ <div class="badges" style="margin-top:18px">${e.genres.map(g=>`<span class="gtag">${gLabel(g)}</span>`).join("")}${e.featured?`<span class="gtag feat">★</span>`:""}<span class="meta">· ${e.mode.toUpperCase()}</span></div>
  <h1 class="title" style="font-size:clamp(38px,7vw,86px);margin-top:10px">${esc(e.title)}</h1>
  <div class="detail-grid"><div class="detail-date"><div class="wd mono mut">${d.wd}</div><div class="dd">${d.day}</div><div class="mo mono pri">${d.mo}</div><div class="mono mut" style="margin-top:8px;font-size:12px">${e.time}</div></div>
  <div><div class="dl-row"><div class="k">${t("doors")}</div><div class="v">${d.full} · ${e.time}</div></div>
- <div class="dl-row"><div class="k">${t("price")}</div><div class="v">${esc(e.price)}</div></div>
+ <div class="dl-row"><div class="k">${t("price")}</div><div class="v">${esc(priceLabel(e.price))}</div></div>
  ${v?`<div class="dl-row"><div class="k">${t("venue")}</div><div class="v"><span class="accent">▲</span> ${esc(v.name)} <span class="mut">— ${esc(v.address)} · ${esc(v.district)}</span></div></div>`:""}</div></div>
  ${e.desc?`<p class="lead" style="margin-top:24px">${esc(e.desc)}</p>`:""}
  ${e.lineup.length?`<div style="margin-top:28px"><div class="kick">◤ ${t("lineup")}</div><ul class="lineup">${e.lineup.map(l=>`<li>${esc(l)} <button data-follow="artists" data-key="${esc(l)}" title="${LANG==="cs"?"sledovat umělce":"follow artist"}" style="cursor:pointer;background:none;border:1px solid #2a2724;border-radius:6px;padding:1px 8px;font-size:12px;margin-left:6px;color:${isFollow("artists",l)?"#ecc400":"#7a756b"}">${isFollow("artists",l)?"★":"☆"}</button></li>`).join("")}</ul></div>`:""}
