@@ -535,12 +535,19 @@ function viewSearch(){return `<section class="blk"><div class="wrap"><div class=
  <input id="searchInput" placeholder="${LANG==="cs"?"akce, kapela, žánr, klub…":"event, artist, genre, venue…"}" value="${esc(SEARCH)}" style="font-size:16px;padding:14px;margin-bottom:24px">
  <div id="searchResults">${renderSearch()}</div></div></section>`;}
 function renderSearch(){const q=SEARCH.trim().toLowerCase();
- if(!q)return `<div class="notice">${LANG==="cs"?"// začni psát…":"// start typing…"}</div>`;
- const evs=getAll().filter(e=>e.date>=todayISO()&&(e.title+" "+(e.lineup||[]).join(" ")+" "+(e.genres||[]).join(" ")+" "+((V[e.venue]||{}).name||"")).toLowerCase().includes(q)).sort((a,b)=>a.date.localeCompare(b.date));
+ if(!q)return `<div class="notice">${LANG==="cs"?"// začni psát — akce, umělec, žánr, klub…":"// start typing — event, artist, genre, venue…"}</div>`;
+ const up=getAll().filter(e=>e.date>=todayISO());
+ const evs=up.filter(e=>(e.title+" "+(e.lineup||[]).join(" ")+" "+(e.genres||[]).join(" ")+" "+((V[e.venue]||{}).name||"")+" "+(e.venueName||"")).toLowerCase().includes(q)).sort((a,b)=>a.date.localeCompare(b.date));
  const vns=VENUES.filter(v=>(v.name+" "+v.district).toLowerCase().includes(q));
+ const aC={};up.forEach(e=>(e.lineup||[]).forEach(a=>{if(a.toLowerCase().includes(q))aC[a]=(aC[a]||0)+1;}));
+ const arts=Object.entries(aC).sort((x,y)=>y[1]-x[1]).slice(0,16);
+ const gC={};up.forEach(e=>(e.genres||[]).forEach(g=>{if(g.toLowerCase().includes(q)||gLabel(g).toLowerCase().includes(q))gC[g]=(gC[g]||0)+1;}));
+ const gens=Object.entries(gC).sort((x,y)=>y[1]-x[1]);
  let h="";
- if(vns.length)h+=`<div class="kick" style="margin-top:0">${LANG==="cs"?"KLUBY":"VENUES"} (${vns.length})</div><div class="venues" style="margin-bottom:30px">${vns.map(v=>`<a class="venue" href="#/klub/${v.id}"><h3>${esc(v.name)}</h3><div class="addr">▲ ${esc(v.address)} · ${esc(v.district)}</div><div class="cnt">${v.mode.toUpperCase()} →</div></a>`).join("")}</div>`;
- h+=`<div class="kick">${LANG==="cs"?"AKCE":"EVENTS"} (${evs.length})</div><div class="cards">${evs.length?evs.map(eventCard).join(""):`<div class="notice">${t("empty")}</div>`}</div>`;
+ if(arts.length)h+=`<div class="kick" style="margin-top:0">${LANG==="cs"?"UMĚLCI":"ARTISTS"} (${arts.length})</div><div class="pills" style="margin-bottom:24px">${arts.map(([a,c])=>`<span style="display:inline-flex;align-items:center;gap:5px"><button class="pill" style="cursor:pointer" data-search="${esc(a)}">♪ ${esc(a)} <span class="mut">${c}</span></button><button data-follow="artists" data-key="${esc(a)}" title="${LANG==="cs"?"sledovat":"follow"}" style="background:none;border:1px solid #2a2724;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;color:${isFollow("artists",a)?"#ecc400":"#7a756b"}">${isFollow("artists",a)?"★":"☆"}</button></span>`).join("")}</div>`;
+ if(gens.length)h+=`<div class="kick">${LANG==="cs"?"ŽÁNRY":"GENRES"} (${gens.length})</div><div class="pills" style="margin-bottom:26px">${gens.map(([g,c])=>`<button class="pill" style="cursor:pointer" data-genre="${esc(g)}">${gLabel(g)} <span class="mut">${c}</span> →</button>`).join("")}</div>`;
+ if(vns.length)h+=`<div class="kick">${LANG==="cs"?"KLUBY":"VENUES"} (${vns.length})</div><div class="venues" style="margin-bottom:30px">${vns.map(v=>`<a class="venue" href="#/klub/${v.id}"><h3>${esc(v.name)}</h3><div class="addr">▲ ${esc(v.address)} · ${esc(v.district)}</div><div class="cnt">${v.mode.toUpperCase()} →</div></a>`).join("")}</div>`;
+ h+=`<div class="kick">${LANG==="cs"?"AKCE":"EVENTS"} (${evs.length})</div><div class="cards">${evs.length?evs.map(eventCard).join(""):`<div class="notice">${LANG==="cs"?"// žádné akce":"// no events"}</div>`}</div>`;
  return h;}
 function viewMapa(){return `<section class="blk"><div class="wrap"><div class="kick">◤ ${LANG==="cs"?"MAPA KLUBŮ":"VENUE MAP"}</div>
  <h2 class="big" style="margin-bottom:20px">${LANG==="cs"?"Mapa scény":"Scene map"}</h2>
@@ -631,7 +638,10 @@ document.getElementById("lang").addEventListener("click",e=>{const b=e.target.cl
 document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("nav").classList.toggle("open"));
 document.getElementById("intro").addEventListener("click",e=>{const h=e.target.closest(".ihalf");if(!h)return;const m=h.dataset.mode;MODE=m;localStorage.setItem("bu_mode",m);sessionStorage.setItem("bu_entered","1");document.body.className="mode-"+m;FILT={genre:"ALL",when:"all",venue:"all"};router();const iv=document.getElementById("intro");iv.classList.add("hide");setTimeout(()=>{iv.style.display="none";},580);});
 window.addEventListener("hashchange",()=>router());
-document.getElementById("app").addEventListener("click",e=>{document.querySelectorAll("details.cal[open]").forEach(d=>{if(!d.contains(e.target))d.removeAttribute("open");});const b=e.target.closest("[data-follow]");if(!b)return;e.preventDefault();toggleFollow(b.dataset.follow,b.dataset.key);router(true);});
+document.getElementById("app").addEventListener("click",e=>{document.querySelectorAll("details.cal[open]").forEach(d=>{if(!d.contains(e.target))d.removeAttribute("open");});
+ const _s=e.target.closest("[data-search]");if(_s){SEARCH=_s.dataset.search;const _i=document.getElementById("searchInput");if(_i)_i.value=SEARCH;const _r=document.getElementById("searchResults");if(_r)_r.innerHTML=renderSearch();return;}
+ const _g=e.target.closest("[data-genre]");if(_g){FILT.genre=_g.dataset.genre;location.hash="#/akce";return;}
+ const b=e.target.closest("[data-follow]");if(!b)return;e.preventDefault();toggleFollow(b.dataset.follow,b.dataset.key);router(true);});
 router();
 (function(){var p=(location.hash||"").replace(/^#\//,"").split("/"),r0=p[0];var _entered=sessionStorage.getItem("bu_entered")==="1";if((!r0||r0==="home")&&!_entered)return;var m=null;if(r0==="klub"&&p[1]&&V[p[1]])m=V[p[1]].mode;else if(r0==="akce"&&p[1]){var ev=getAll().find(function(x){return x.id===p[1];});if(ev)m=ev.mode;}if(m){MODE=m;document.body.className="mode-"+MODE;router();}var iv=document.getElementById("intro");if(iv){iv.classList.add("hide");iv.style.display="none";}})();
 </script>
