@@ -85,6 +85,8 @@
   .pill{font-family:var(--mono);font-size:11px;letter-spacing:.18em;padding:8px 13px;border:2px solid var(--border);color:#cfc9bd;background:none;cursor:pointer}
   .pill:hover{border-color:#6c665b} .pill.on{background:var(--primary);color:var(--primary-fg);border-color:var(--primary);font-weight:700}
   .filters{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-bottom:20px}
+  .filters .ffree-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--fg);border:1px solid #5a554c;padding:12px 15px;white-space:nowrap;margin-bottom:0;align-self:flex-start}
+  .filters .ffree-toggle input{width:15px;height:15px;flex:none;accent-color:var(--primary);margin:0}
   .filters label{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted);display:block;margin-bottom:6px}
   select,input,textarea{font-family:var(--mono);font-size:13px;background:#15130f;border:2px solid var(--border);color:var(--fg);padding:11px 12px;width:100%}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--primary)}
@@ -445,7 +447,7 @@ function viewAkce(){return `<section class="blk"><div class="wrap"><div class="k
  <option value="all" ${FILT.when==="all"?"selected":""}>${t("when_all")}</option><option value="week" ${FILT.when==="week"?"selected":""}>${t("when_week")}</option>
  <option value="weekend" ${FILT.when==="weekend"?"selected":""}>${t("when_weekend")}</option><option value="up" ${FILT.when==="up"?"selected":""}>${t("when_up")}</option></select></div>
  <div><label>${t("f_venue")}</label><select id="fVenue"><option value="all">${t("venue_all")}</option>${modeVenues().map(v=>`<option value="${v.id}" ${FILT.venue===v.id?"selected":""}>${esc(v.name)}</option>`).join("")}</select></div>
- <div><label>${LANG==="cs"?"cena":"price"}</label><label style="display:flex;gap:7px;align-items:center;cursor:pointer;padding:8px 0;font-family:var(--mono);font-size:12px"><input type="checkbox" id="fFree" ${FILT.free?"checked":""}> ${LANG==="cs"?"jen zdarma":"free only"}</label></div></div>
+ <div><label>${LANG==="cs"?"cena":"price"}</label><label class="ffree-toggle"><input type="checkbox" id="fFree" ${FILT.free?"checked":""}>${LANG==="cs"?"jen zdarma":"free only"}</label></div></div>
  <div class="cards" id="akceList">${renderAkceList()}</div></div></section>`;}
 function renderAkceList(){let list=modeEvents().filter(e=>e.date>=todayISO());
  if(FILT.genre!=="ALL")list=list.filter(e=>e.genres.includes(FILT.genre));
