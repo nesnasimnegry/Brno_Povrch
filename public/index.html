@@ -24,9 +24,9 @@
 <meta name="twitter:image" content="https://images.unsplash.com/photo-1545128485-c400e7702796?auto=format&fit=crop&w=1200&h=630&q=70" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" /></noscript>
+<!-- Leaflet se načítá lazy až při otevření mapy (viz ensureLeaflet) — ať nezdržuje první render -->
 <style>
   :root{
     --bg:#0c0b0a; --fg:#efeae0; --primary:#ecc400; --primary-fg:#161208;
@@ -606,19 +606,32 @@ function router(noScroll){const parts=(location.hash||"#/").replace(/^#\//,"").s
  else html=`<section class="blk"><div class="wrap"><div class="kick">◤ 404</div><h2 class="big">${LANG==="cs"?"Ztracen ve scéně.":"Lost in the scene."}</h2><div style="margin-top:22px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn btn-pri" href="#/">${LANG==="cs"?"DOMŮ":"HOME"}</a><a class="btn btn-out" href="#/akce">${t("nav_akce")}</a></div></div></section>`;
  document.getElementById("app").innerHTML=html;renderChrome();renderFooter();bindView(route);
  document.getElementById("nav").classList.remove("open");if(!noScroll)window.scrollTo(0,0);}
+let _leafletP=null;
+function ensureLeaflet(){
+ if(window.L)return Promise.resolve();
+ if(_leafletP)return _leafletP;
+ _leafletP=new Promise((res,rej)=>{
+  const css=document.createElement("link");css.rel="stylesheet";css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";document.head.appendChild(css);
+  const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";s.onload=()=>res();s.onerror=()=>{_leafletP=null;rej();};document.head.appendChild(s);
+ });
+ return _leafletP;
+}
 function bindView(route){
  // pojistka: kdyby se mapa nenacetla (blokovana/offline), neblikej skeletonem donekonecna
  setTimeout(()=>document.querySelectorAll(".map.skel").forEach(el=>el.classList.remove("skel")),8000);
  if(route==="hledat"){const si=document.getElementById("searchInput");if(si){si.addEventListener("input",e=>{SEARCH=e.target.value;document.getElementById("searchResults").innerHTML=renderSearch();});si.focus();}}
  document.getElementById("homeGenrePills")?.addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(!b)return;FILT.genre=b.dataset.g;document.querySelectorAll("#homeGenrePills .pill").forEach(p=>p.classList.toggle("on",p.dataset.g===FILT.genre));document.getElementById("homeCards").innerHTML=renderHomeList();});
- if(route==="mapa"&&window.L){const m=L.map("leafmap",{scrollWheelZoom:true,zoomControl:true}).setView([49.197,16.607],13);
+ if(route==="mapa"){ensureLeaflet().then(()=>{
+  if((location.hash||"").split("/")[1]!=="mapa"||!document.getElementById("leafmap")||!window.L)return;
+  const m=L.map("leafmap",{scrollWheelZoom:true,zoomControl:true}).setView([49.197,16.607],13);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:"© OpenStreetMap, © CARTO"}).addTo(m);
   const marks={};const focus=(location.hash||"").split("/")[2];
   VENUES.filter(v=>v.mode===MODE).forEach(v=>{const c=COORDS[v.id];if(!c)return;const col=v.mode==="underground"?"#ecc400":"#37d4e6";marks[v.id]=L.circleMarker(c,{radius:8,color:col,weight:2,fillColor:col,fillOpacity:.55}).addTo(m).bindTooltip(esc(v.name),{permanent:true,direction:"top",offset:[0,-4],className:"vlabel"}).bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.district)}<br><a href="#/klub/${v.id}">${LANG==="cs"?"detail klubu →":"venue detail →"}</a>`);});
   if(focus&&marks[focus]){m.setView(COORDS[focus],16);marks[focus].openPopup();}
   const upd=()=>m.getContainer().classList.toggle("zoomed",m.getZoom()>=15);m.on("zoom",upd);upd();
   const ph=m.getContainer().querySelector(".map-loading");if(ph)ph.remove();m.getContainer().classList.remove("skel");
-  setTimeout(()=>m.invalidateSize(),120);}
+  setTimeout(()=>m.invalidateSize(),120);
+ }).catch(()=>{});}
  if(route==="akce"&&!location.hash.split("/")[2]){
   document.getElementById("genrePills")?.addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(!b)return;FILT.genre=b.dataset.g;
    document.querySelectorAll("#genrePills .pill").forEach(p=>p.classList.toggle("on",p.dataset.g===FILT.genre));document.getElementById("akceList").innerHTML=renderAkceList();});
