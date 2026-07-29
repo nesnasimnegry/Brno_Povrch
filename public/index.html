@@ -620,8 +620,8 @@ function bindView(route){
 }
 function setMode(m){const app=document.getElementById("app");app.classList.remove("m-in");app.classList.add("m-out");setTimeout(()=>{MODE=m;localStorage.setItem("bu_mode",m);document.body.className="mode-"+m;FILT={genre:"ALL",when:"all",venue:"all"};
  const _p=(location.hash||"").replace(/^#\//,"").split("/");
- if(_p[0]==="klub"&&_p[1]&&V[_p[1]]&&V[_p[1]].mode!==m)location.hash="#/kluby";
- else if(_p[0]==="akce"&&_p[1]){const _e=getAll().find(x=>x.id===_p[1]);if(_e&&_e.mode!==m)location.hash="#/akce";}
+ if(_p[0]==="klub"&&_p[1]&&V[_p[1]]&&V[_p[1]].mode!==m)location.hash="#/";
+ else if(_p[0]==="akce"&&_p[1]){const _e=getAll().find(x=>x.id===_p[1]);if(_e&&_e.mode!==m)location.hash="#/";}
  router();const a=document.getElementById("app");a.classList.remove("m-out");a.classList.add("m-in");setTimeout(()=>a.classList.remove("m-in"),470);},180);}
 document.body.className="mode-"+MODE;
 document.getElementById("modeBtn").addEventListener("click",()=>setMode(MODE==="underground"?"public":"underground"));
