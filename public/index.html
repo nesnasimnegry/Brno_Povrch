@@ -53,6 +53,9 @@
   nav.main a{padding:4px 0;border-bottom:2px solid transparent;color:#cfc9bd}
   nav.main a:hover{color:var(--primary)} nav.main a.active{color:var(--fg);border-bottom-color:var(--primary)}
   .right{display:flex;gap:9px;align-items:center}
+  .iconbtn{display:flex;align-items:center;justify-content:center;border:1px solid var(--border);color:var(--fg);padding:6px 8px;cursor:pointer;text-decoration:none;transition:.15s}
+  .iconbtn:hover{color:var(--primary);border-color:var(--primary)}
+  .iconbtn svg{display:block}
   .modebtn{background:none;border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;letter-spacing:.13em;padding:6px 10px;cursor:pointer;white-space:nowrap}
   .modebtn:hover{background:var(--accent);color:#fff}
   .lang{display:flex;border:1px solid var(--border)}
@@ -267,7 +270,7 @@
 <header class="site"><div class="bar">
   <a class="brand" href="#/"><span class="dot"></span><span>BRNO_SCÉNA</span></a>
   <nav class="main" id="nav"></nav>
-  <div class="right"><button class="modebtn" id="modeBtn"></button><div class="lang" id="lang"></div><button class="menu-btn" id="menuBtn">≡</button></div>
+  <div class="right"><a class="iconbtn" href="#/hledat" aria-label="Hledat / Search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="7"/><line x1="21" y1="21" x2="15.8" y2="15.8"/></svg></a><button class="modebtn" id="modeBtn"></button><div class="lang" id="lang"></div><button class="menu-btn" id="menuBtn">≡</button></div>
 </div></header>
 <div id="app"></div>
 <footer class="site" id="footer"></footer>
