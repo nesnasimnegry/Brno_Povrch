@@ -2,8 +2,9 @@
 """
 grab_povrch.py — off-cloud POVRCH grabber pro BRNO SCÉNA.
 
-Stáhne nadcházející HUDEBNÍ akce z GoOut Brno, namapuje na ID podniků v appce
-a aktualizuje pole `const EVENTS=[...]` v public/index.html.
+Stáhne nadcházející HUDEBNÍ akce z GoOut Brno (+ web Sona, který GoOut nepokrývá
+celý), namapuje na ID podniků v appce a aktualizuje `const EVENTS=[...]` v
+public/index.html. Zdroje se odduplikují (GoOut má přednost — má cenu a lineup).
 
 ŽÁDNÉ LLM, žádné tajemství. Data z veřejného GoOut entity API (JSON přes requests).
 Žánry řeší pravidla (klíčová slova).
@@ -24,6 +25,7 @@ import sys
 from zoneinfo import ZoneInfo
 
 import requests
+from bs4 import BeautifulSoup
 
 # Windows konzole (cp1250) by jinak spadla na znacích jako → … — a shodila celý běh.
 # errors="replace": výpis se nikdy nesmí stát důvodem pádu grabberu.
@@ -34,6 +36,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 GOOUT_BASE = "https://goout.net/cs/brno/akce/lezjyvlkk/"
+SONO_URL = "https://www.sono.cz/"    # Sono Music Club — server-rendered program (GoOut ho nepokrývá)
 INDEX_FILE = "public/index.html"
 WEEKS_AHEAD = 6
 MAX_EVENTS = 18
@@ -501,14 +504,76 @@ def write_alerts(dry_run):
                 af.write(f"  • {w}\n")
 
 
+def fetch_sono(today):
+    """Web Sono Music Clubu — server-rendered seznam akcí.
+
+    Karta = a[href*=/event/] + nejbližší nadpis (h1–h4) + datum D.M.YYYY v textu.
+    Každá akce je na stránce 2× (odkaz na detail + kotva #vstupenka) → href se
+    normalizuje (bez fragmentu/query) a dedupuje. Resilience jako ostatní zdroje:
+    při pádu vrátí [] a zapíše WARNING (běh se nezastaví)."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=WEEKS_AHEAD)
+    lo, hi = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    try:
+        r = requests.get(SONO_URL, headers=UA, timeout=30)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[warn] Sono web nešel načíst: {e}", file=sys.stderr)
+        WARNINGS.append(f"Sono web nešel načíst: {e}")
+        return out
+    soup = BeautifulSoup(r.text, "html.parser")
+    date_re = re.compile(r"(\d{1,2})\.\s*(\d{1,2})\.\s*(20\d\d)")
+    for a in soup.select('a[href*="/event/"]'):
+        href = a.get("href", "").split("#")[0].split("?")[0]
+        if not href or href in seen:
+            continue
+        card, title, date = a, None, None
+        for _ in range(4):
+            card = card.parent
+            if card is None:
+                break
+            h = card.find(["h1", "h2", "h3", "h4"])
+            if h and not title:
+                title = re.sub(r"\s+", " ", h.get_text(" ", strip=True)).strip()
+            m = date_re.search(card.get_text(" ", strip=True))
+            if m and not date:
+                date = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            if title and date:
+                break
+        if not title or not date or date < lo or date > hi:
+            continue
+        seen.add(href)
+        out.append({
+            "title": title, "date": date, "time": "20:00", "venue": "sono",
+            "genres": genre_for(title, "koncert"),
+            "ticket": href, "price": "", "lineup": [], "blurb": title[:90], "desc": "",
+        })
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="jen vypsat, nic nezapisovat")
     args = ap.parse_args()
     today = datetime.date.today()
-    print(f"[info] {today} — stahuji GoOut Brno…")
-    events = fetch_events(today)
-    print(f"[info] nalezeno {len(events)} hudebních akcí v našich podnicích.")
+    print(f"[info] {today} — stahuji GoOut Brno + Sono…")
+    goout = fetch_events(today)
+    # Sono doplní, co GoOut nemá; při shodě má přednost GoOut (má detaily: cena, lineup).
+    have_dv = {(e["date"], e["venue"]) for e in goout}
+    titles_by_date = {}
+    for e in goout:
+        titles_by_date.setdefault(e["date"], []).append(e["title"])
+    events, added = list(goout), 0
+    for e in fetch_sono(today):
+        if (e["date"], e["venue"]) in have_dv or \
+           any(_same_event(e["title"], t) for t in titles_by_date.get(e["date"], [])):
+            continue
+        have_dv.add((e["date"], e["venue"]))
+        titles_by_date.setdefault(e["date"], []).append(e["title"])
+        events.append(e)
+        added += 1
+    events = sorted(events, key=lambda e: e["date"])[:MAX_EVENTS]
+    print(f"[info] GoOut {len(goout)} + Sono +{added} → celkem {len(events)} akcí.")
     if not events:
         print("[warn] 0 akcí v našich podnicích — uklidím prošlé auto-akce, budoucí nechám.")
     rc = update_index(events, args.dry_run)   # běží i při 0 akcí → úklid prošlých
