@@ -1,4 +1,0 @@
-# Netlify konfigurace — publikuje složku public/ a používá serverless funkce.
-[build]
-  publish = "public"
-  functions = "netlify/functions"
