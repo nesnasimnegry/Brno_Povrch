@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
@@ -205,21 +206,53 @@ def fetch_exit(today):
 IG_CACHE = "data/ig_events.json"     # sticky: akce vydrží, i když IG zrovna blokne
 IG_MAX_POSTS = 8                     # kolik posledních postů na účet
 IG_LOOKBACK_DAYS = 35                # jak staré posty ještě číst
-# ⚠️ ODHADNUTÉ HANDLY — MAJITELI: ověř/uprav na skutečná @ z Instagramu (jen underground kluby).
+# IG účet -> venue id. Klubové účty mají pevné místo; promotéři = None (venue se
+# detekuje z popisku, viz _ig_venue). MAJITELI: uprav dle reálných @ / míst.
 IG_ACCOUNTS = {
-    "kabinetmuz": "kabinet",
-    "exitclubbrno": "exit",
-    "klubalterna": "alterna",
-    "industra.space": "industra",
-    "artbar.brno": "artbar",
-    "kcsibir": "sibir",
-    # "handle": "venue_id",  ← přidej další
+    # kluby (pevné místo)
+    "perpetuumklub": "perpetuum",
+    "perpetuum_techno_thursday": "perpetuum",
+    "perpetuumdnbwednesday": "perpetuum",
+    "fraktal_noise": "fraktal",
+    "klub_alterna": "alterna",
+    "artbar.club": "artbar",
+    # promotéři (místo z popisku)
+    "bassproof": None,
+    "raisethebass_rave": None,
+    "brnoparties": None,
+    "wednesrave_brno": None,
+    "brnoraves": None,
+    "kpromotions.cz": None,
+    "bestevents": None,
+}
+# klíčové slovo v popisku -> venue id (underground). Klíče bez diakritiky, malými.
+VENUE_KW = {
+    "perpetuum": "perpetuum", "fraktal": "fraktal", "alterna": "alterna",
+    "artbar": "artbar", "art bar": "artbar", "kabinet": "kabinet", "exit club": "exit",
+    "industra": "industra", "radost": "radost", "vibe": "vibe", "pulpit": "pulpit",
+    "pul.pit": "pulpit", "mala amerika": "malaamerika", "mosilana": "mosilana",
+    "sibir": "sibir", "sklenen": "sklenka", "sklenka": "sklenka", "vodojem": "vodojemy",
+    "enter club": "enter",
 }
 _IG_LETTER = re.compile(r"[a-zžščřďťňáéíóúůě]", re.I)
 
 
-def _parse_ig_caption(text, venue, today, horizon):
-    """Z popisku IG postu zkusí akci. Vrátí event dict, nebo None (bez data v horizontu)."""
+def _strip(s):
+    return "".join(c for c in unicodedata.normalize("NFD", s or "")
+                   if unicodedata.category(c) != "Mn").lower()
+
+
+def _ig_venue(text, default):
+    """Zkusí najít v popisku známé underground místo; jinak vrátí default (může být None)."""
+    low = _strip(text)
+    for kw, vid in VENUE_KW.items():
+        if kw in low:
+            return vid
+    return default
+
+
+def _parse_ig_caption(text, default_venue, today, horizon):
+    """Z popisku IG postu zkusí akci. Vrátí event dict, nebo None (chybí datum/místo/horizont)."""
     if not text:
         return None
     m = re.search(r"\b([0-3]?\d)\s*\.\s*([01]?\d)\.?\s*(20\d\d)?", text)
@@ -249,6 +282,9 @@ def _parse_ig_caption(text, venue, today, horizon):
         title = text.strip()[:80]
     if not title:
         return None
+    venue = _ig_venue(text, default_venue)
+    if not venue:
+        return None   # promotér bez rozpoznaného místa → nelze zařadit
     return {"title": title, "date": dt.strftime("%Y-%m-%d"), "time": tstr, "venue": venue,
             "genres": g.genre_for(text[:160], "koncert"), "ticket": "", "price": "",
             "lineup": [], "blurb": title[:90], "desc": ""}
