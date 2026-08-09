@@ -575,10 +575,10 @@ function prefillFromFlyer(ev){const f=document.getElementById("addForm");if(!f||
  if(ev.venue&&f.elements.venue){const vn=ev.venue.toLowerCase();const m=modeVenues().find(v=>vn.includes(v.name.toLowerCase())||v.name.toLowerCase().includes(vn));if(m)f.elements.venue.value=m.id;}}
 function viewPridat(){return `<section class="blk"><div class="wrap"><div class="kick">${t("add_kick")} · ${MODE.toUpperCase()}</div>
  <h2 class="big" style="margin-bottom:14px">${t("add_t")}</h2><div class="notice" style="margin-bottom:22px">${t("add_hint")}</div>
- ${sessionStorage.getItem("bu_admin")==="1"?`<div style="border:1px dashed var(--border);padding:15px 16px;margin-bottom:22px">
+ <div style="border:1px dashed var(--border);padding:15px 16px;margin-bottom:22px">
   <div class="mono" style="font-size:12px;letter-spacing:.14em;color:var(--primary);margin-bottom:10px">◤ ${LANG==="cs"?"MÁŠ FLYER? NAHRAJ HO A PŘEDVYPLNÍM":"GOT A FLYER? UPLOAD IT TO PREFILL"}</div>
   <input type="file" id="flyerFile" accept="image/*" style="font-family:var(--mono);font-size:12px;color:var(--fg)">
-  <div id="flyerMsg" class="mut mono" style="font-size:12px;margin-top:9px"></div></div>`:""}
+  <div id="flyerMsg" class="mut mono" style="font-size:12px;margin-top:9px">${LANG==="cs"?"přečte se v prohlížeči — nic se nikam neposílá":"read in your browser — nothing is uploaded"}</div></div>
  <form class="form" id="addForm"><div class="row"><label>${t("l_title")}</label><input name="title" required></div>
  <div class="two"><div class="row"><label>${t("l_date")}</label><input type="date" name="date" required></div><div class="row"><label>${t("l_time")}</label><input name="time" placeholder="22:00" required></div></div>
  <div class="two"><div class="row"><label>${t("l_venue")}</label><select name="venue">${modeVenues().map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join("")}</select></div><div class="row"><label>${t("l_genre")}</label><select name="genre">${ALL_GENRES.map(g=>`<option>${g}</option>`).join("")}</select></div></div>
@@ -637,6 +637,29 @@ function ensureLeaflet(){
  });
  return _leafletP;
 }
+let _tessP=null;
+function ensureTesseract(){
+ if(window.Tesseract)return Promise.resolve();
+ if(_tessP)return _tessP;
+ _tessP=new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";s.onload=()=>res();s.onerror=()=>{_tessP=null;rej();};document.head.appendChild(s);});
+ return _tessP;
+}
+// Přečte akci z OCR textu flyeru (Tesseract běží v prohlížeči — zdarma, bez serveru).
+function parseFlyerText(txt){
+ const T=(txt||"").replace(/ /g," "),low=T.toLowerCase();
+ const ev={title:"",date:"",time:"",venue:"",genre:"",price:"",lineup:[],desc:""};
+ const dm=T.match(/\b([0-3]?\d)\s*\.\s*([01]?\d)\s*\.?\s*(20\d\d)?/);
+ if(dm){const d=+dm[1],mo=+dm[2];if(d>=1&&d<=31&&mo>=1&&mo<=12){const iso=yy=>yy+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");let y=dm[3]?+dm[3]:new Date().getFullYear();if(!dm[3]&&iso(y)<new Date().toISOString().slice(0,10))y++;ev.date=iso(y);}}
+ const tm=T.match(/\b([0-2]?\d)[:.h]([0-5]\d)\b/);if(tm&&+tm[1]<24)ev.time=String(+tm[1]).padStart(2,"0")+":"+tm[2];
+ const pr=T.match(/(\d{2,4})\s?(?:kč|kc|czk|,-)/i);if(pr)ev.price=pr[1]+" Kč";else if(/zdarma|vstup voln|free entry/i.test(low))ev.price="zdarma";
+ const strip=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase(),lowS=strip(T);
+ const vh=modeVenues().find(v=>lowS.includes(strip(v.name)));if(vh)ev.venue=vh.name;
+ const gm=[["techno","TECHNO"],["house","HOUSE"],["trance","TRANCE"],["dnb","DNB"],["drum","DNB"],["acid","ACID"],["hip hop","HIPHOP"],["hiphop","HIPHOP"],["rap","HIPHOP"],["swing","SWING"],["indie","INDIE"],["rock","INDIE"],["punk","PUNK"],["hardcore","PUNK"],["metal","PUNK"],["jazz","JAZZ"],["noise","NOISE"],["rave","RAVE"],["párty","RAVE"],["party","RAVE"],["koncert","KONCERT"],["concert","KONCERT"]];
+ for(const g of gm){if(low.includes(g[0])){ev.genre=g[1];break;}}
+ const cand=T.split(/\n+/).map(s=>s.trim()).filter(Boolean).find(l=>l.length>=4&&/[a-zžščřďťňáéíóúůě]/i.test(l)&&!/^[\d.\s:h]+$/.test(l));
+ if(cand)ev.title=cand.slice(0,80);
+ return ev;
+}
 function bindView(route){
  // pojistka: kdyby se mapa nenacetla (blokovana/offline), neblikej skeletonem donekonecna
  setTimeout(()=>document.querySelectorAll(".map.skel").forEach(el=>el.classList.remove("skel")),8000);
@@ -663,7 +686,7 @@ function bindView(route){
  document.getElementById("addForm")?.addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);
   const ev={mode:MODE,title:f.get("title"),date:f.get("date"),time:f.get("time")||"20:00",venue:f.get("venue"),genres:[f.get("genre")].filter(Boolean),price:f.get("price")||"",ticket:f.get("ticket")||"",lineup:(f.get("lineup")||"").split(",").map(s=>s.trim()).filter(Boolean),blurb:(f.get("desc")||"").slice(0,90),desc:f.get("desc")||""};
   fetch("/events",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:ev})}).catch(()=>{});e.target.reset();document.getElementById("addMsg").innerHTML=`<div class="notice ok">${t("add_ok")}</div>`;});
- document.getElementById("flyerFile")?.addEventListener("change",e=>{const file=e.target.files[0];if(!file)return;const msg=document.getElementById("flyerMsg");msg.textContent=LANG==="cs"?"čtu flyer…":"reading flyer…";const rd=new FileReader();rd.onload=()=>{const img=new Image();img.onload=()=>{const max=900,sc=Math.min(1,max/Math.max(img.width,img.height));const cv=document.createElement("canvas");cv.width=img.width*sc|0;cv.height=img.height*sc|0;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);const b64=cv.toDataURL("image/jpeg",0.82).split(",")[1];fetch("/flyer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:b64,pw:sessionStorage.getItem("bu_adminpw")||""})}).then(r=>r.json()).then(d=>{if(d.error){msg.innerHTML=`<span style="color:#ff9b9b">${esc(d.error)}</span>`;return;}prefillFromFlyer(d.event);msg.innerHTML=`<span style="color:#7CFC9B">✓ ${LANG==="cs"?"předvyplněno — zkontroluj a odešli":"prefilled — review and submit"}</span>`;}).catch(()=>{msg.textContent=LANG==="cs"?"chyba sítě — zkus to znovu":"network error — retry";});};img.onerror=()=>{msg.textContent=LANG==="cs"?"obrázek nejde načíst":"can't load image";};img.src=rd.result;};rd.readAsDataURL(file);});
+ document.getElementById("flyerFile")?.addEventListener("change",e=>{const file=e.target.files[0];if(!file)return;const msg=document.getElementById("flyerMsg");msg.textContent=LANG==="cs"?"načítám OCR…":"loading OCR…";const rd=new FileReader();rd.onload=()=>{const img=new Image();img.onload=()=>{const max=1400,sc=Math.min(1,max/Math.max(img.width,img.height));const cv=document.createElement("canvas");cv.width=img.width*sc|0;cv.height=img.height*sc|0;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);ensureTesseract().then(()=>Tesseract.recognize(cv,"ces+eng",{logger:m=>{if(m.status==="recognizing text")msg.textContent=(LANG==="cs"?"čtu flyer… ":"reading… ")+Math.round(m.progress*100)+" %";}})).then(r=>{const ev=parseFlyerText((r.data&&r.data.text)||"");prefillFromFlyer(ev);const got=[ev.title&&(LANG==="cs"?"název":"title"),ev.date&&(LANG==="cs"?"datum":"date"),ev.time&&(LANG==="cs"?"čas":"time"),ev.venue&&(LANG==="cs"?"klub":"venue"),ev.price&&(LANG==="cs"?"cena":"price")].filter(Boolean).join(", ");msg.innerHTML=`<span style="color:#7CFC9B">✓ ${LANG==="cs"?"přečteno":"read"}${got?" ("+got+")":""} — ${LANG==="cs"?"zkontroluj a doplň":"review & fill in"}</span>`;}).catch(()=>{msg.innerHTML=`<span style="color:#ff9b9b">${LANG==="cs"?"OCR se nepovedlo — zkus ostřejší foto":"OCR failed — try a sharper photo"}</span>`;});};img.onerror=()=>{msg.textContent=LANG==="cs"?"obrázek nejde načíst":"can't load image";};img.src=rd.result;};rd.readAsDataURL(file);});
  document.getElementById("newsForm")?.addEventListener("submit",e=>{e.preventDefault();const c=new FormData(e.target).get("contact");if(!c)return;const s=load("bu_subs",[]);s.push(c);save("bu_subs",s);fetch("https://api.web3forms.com/submit",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({access_key:W3F_KEY,subject:"Nový odběratel newsletteru",from_name:"BRNO SCÉNA",contact:c})}).catch(()=>{});e.target.reset();document.getElementById("newsMsg").textContent=t("news_ok");});
  document.getElementById("subForm")?.addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);const email=(f.get("email")||"").trim();if(!email||!f.get("consent"))return;const msg=document.getElementById("subMsg");msg.textContent=LANG==="cs"?"posílám…":"sending…";fetch("/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,follows:FOLLOWS,consent:true})}).then(r=>r.json()).then(d=>{if(d.success){save("bu_sub_email",email);msg.innerHTML=`<span style="color:#7CFC9B">✓ ${LANG==="cs"?(d.updated?"Aktualizováno — budeš dostávat upozornění.":"Hotovo! Budeš dostávat upozornění na akce, co sleduješ."):(d.updated?"Updated.":"Done — you'll get alerts for your follows.")}</span>`;}else{msg.innerHTML=`<span style="color:#ff9b9b">${esc(d.error||(LANG==="cs"?"něco se nepovedlo":"something went wrong"))}</span>`;}}).catch(()=>{msg.innerHTML=`<span style="color:#ff9b9b">${LANG==="cs"?"chyba sítě — zkus to znovu":"network error — try again"}</span>`;});});
  document.getElementById("gateForm")?.addEventListener("submit",e=>{e.preventDefault();const pw=new FormData(e.target).get("pw");const gm=document.getElementById("gateMsg");gm.textContent=LANG==="cs"?"ověřuji…":"checking…";fetch("/events?pw="+encodeURIComponent(pw)).then(r=>r.json().then(d=>({ok:r.ok&&!d.error}))).then(res=>{if(res.ok){sessionStorage.setItem("bu_admin","1");sessionStorage.setItem("bu_adminpw",pw);router();}else gm.textContent=t("admin_wrong");}).catch(()=>{gm.textContent=t("admin_wrong");});});
