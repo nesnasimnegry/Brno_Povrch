@@ -200,12 +200,17 @@ def fetch_exit(today):
 
 
 # ------------------------------------------------------------------ Instagram
-# Underground akce z IG postů kurátorovaných klubů. ZDARMA přes instaloader.
-# Anonymně = best-effort (IG blokuje, hlavně z cloud IP). Spolehlivěji + stories:
-# přidej odpadní IG účet jako GitHub secrets IG_USER / IG_PASS (kód se nemění).
+# Underground akce z IG postů kurátorovaných klubů. ZDARMA, ale vyžaduje PŘIHLÁŠENOU
+# session (IG blokuje anonym i cloud IP). Lokálně: ig_session.py (import z prohlížeče)
+# uloží session → ig_local.py scrapne z domácí IP a pushne cache → cloud ji roznese.
+# Pozn.: web_profile_info je u IG rozbitý ("laser.provider" 400), proto jedeme přes
+# privátní mobilní API (usernameinfo + feed/user) s hlavičkou X-IG-App-ID.
 IG_CACHE = "data/ig_events.json"     # sticky: akce vydrží, i když IG zrovna blokne
 IG_MAX_POSTS = 8                     # kolik posledních postů na účet
 IG_LOOKBACK_DAYS = 35                # jak staré posty ještě číst
+IG_APP_UA = ("Instagram 309.0.0.40.113 Android (30/11; 420dpi; 1080x2400; "
+             "samsung; SM-G991B; o1s; exynos2100; en_US; 541134564)")
+IG_HEADERS = {"User-Agent": IG_APP_UA, "X-IG-App-ID": "936619743392459", "X-ASBD-ID": "198387"}
 # IG účet -> venue id. Klubové účty mají pevné místo; promotéři = None (venue se
 # detekuje z popisku, viz _ig_venue). MAJITELI: uprav dle reálných @ / míst.
 IG_ACCOUNTS = {
@@ -235,6 +240,9 @@ VENUE_KW = {
     "enter club": "enter",
 }
 _IG_LETTER = re.compile(r"[a-zžščřďťňáéíóúůě]", re.I)
+_CZ_MONTHS = {"ledna": 1, "unora": 2, "brezna": 3, "dubna": 4, "kvetna": 5, "cervna": 6,
+              "cervence": 7, "srpna": 8, "zari": 9, "rijna": 10, "listopadu": 11, "prosince": 12}
+_CZ_MONTH_RE = re.compile(r"\b([0-3]?\d)\.?\s+(" + "|".join(_CZ_MONTHS) + r")(?:\s+(20\d\d))?")
 
 
 def _strip(s):
@@ -256,15 +264,19 @@ def _parse_ig_caption(text, default_venue, today, horizon):
     if not text:
         return None
     m = re.search(r"\b([0-3]?\d)\s*\.\s*([01]?\d)\.?\s*(20\d\d)?", text)
-    if not m:
-        return None
-    d, mo = int(m.group(1)), int(m.group(2))
+    if m:
+        d, mo, yr = int(m.group(1)), int(m.group(2)), m.group(3)
+    else:
+        mw = _CZ_MONTH_RE.search(_strip(text))     # "15. srpna 2026" / "15 srpna"
+        if not mw:
+            return None
+        d, mo, yr = int(mw.group(1)), _CZ_MONTHS[mw.group(2)], mw.group(3)
     if not (1 <= d <= 31 and 1 <= mo <= 12):
         return None
-    y = int(m.group(3)) if m.group(3) else today.year
+    y = int(yr) if yr else today.year
     try:
         dt = datetime.date(y, mo, d)
-        if not m.group(3) and dt < today:
+        if not yr and dt < today:
             dt = datetime.date(y + 1, mo, d)
     except ValueError:
         return None
@@ -274,12 +286,12 @@ def _parse_ig_caption(text, default_venue, today, horizon):
     tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
     title = ""
     for ln in text.split("\n"):
-        ln = ln.strip()
+        ln = re.sub(r"^[^\w]+", "", ln.strip())   # osekej vedoucí emoji/symboly
         if len(ln) >= 4 and _IG_LETTER.search(ln) and not re.match(r"^[\d.\s:h]+$", ln):
             title = ln[:120]
             break
     if not title:
-        title = text.strip()[:80]
+        title = re.sub(r"^[^\w]+", "", text.strip())[:80]
     if not title:
         return None
     venue = _ig_venue(text, default_venue)
@@ -312,50 +324,45 @@ def fetch_instagram(today, dry_run=False):
                                 download_comments=False, save_metadata=False,
                                 compress_json=False, quiet=True,
                                 max_connection_attempts=1, request_timeout=20.0)
-    user, pw = os.environ.get("IG_USER"), os.environ.get("IG_PASS")
-    if user:
-        try:
-            L.load_session_from_file(user)   # session z lokálního `instaloader --login` (rezidenční IP)
-            print(f"[info] IG: session '{user}' načtena", file=sys.stderr)
-        except FileNotFoundError:
-            if pw:
-                try:
-                    L.login(user, pw)
-                    print(f"[info] IG: přihlášen '{user}'", file=sys.stderr)
-                except Exception as e:
-                    print(f"[warn] IG login selhal ({e}) — anonymně", file=sys.stderr)
-            else:
-                print(f"[warn] IG: session pro '{user}' nenalezena — anonymně", file=sys.stderr)
-        except Exception as e:
-            print(f"[warn] IG session load selhal ({e}) — anonymně", file=sys.stderr)
+    user = os.environ.get("IG_USER")
+    if not user:
+        print("[warn] IG: chybí IG_USER (přihlášená session) — přeskočeno", file=sys.stderr)
+        return list(cache.values())
+    try:
+        L.load_session_from_file(user)
+        print(f"[info] IG: session '{user}' načtena", file=sys.stderr)
+    except Exception as e:
+        print(f"[warn] IG: session '{user}' nenačtena ({type(e).__name__}) — přeskočeno", file=sys.stderr)
+        return list(cache.values())
+    s = L.context._session
+    s.headers.update(IG_HEADERS)   # web_profile_info je rozbitý → privátní mobilní API
 
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=IG_LOOKBACK_DAYS)
+    cutoff = time.time() - IG_LOOKBACK_DAYS * 86400
     found, fails = 0, 0
     for handle, venue in IG_ACCOUNTS.items():
         try:
-            prof = instaloader.Profile.from_username(L.context, handle)
-            n = 0
-            for post in prof.get_posts():
-                pd = post.date_utc
-                if pd.tzinfo is None:
-                    pd = pd.replace(tzinfo=datetime.timezone.utc)
-                if pd < cutoff or n >= IG_MAX_POSTS:
+            info = s.get(f"https://i.instagram.com/api/v1/users/{handle}/usernameinfo/", timeout=20)
+            info.raise_for_status()
+            pk = info.json()["user"]["pk"]
+            feed = s.get(f"https://i.instagram.com/api/v1/feed/user/{pk}/?count={IG_MAX_POSTS}", timeout=20)
+            feed.raise_for_status()
+            for it in feed.json().get("items", []):
+                ts = it.get("taken_at") or 0
+                if ts and ts < cutoff:
                     break
-                n += 1
-                ev = _parse_ig_caption(post.caption or "", venue, today, horizon)
+                ev = _parse_ig_caption((it.get("caption") or {}).get("text") or "", venue, today, horizon)
                 if ev:
-                    ev["ticket"] = f"https://www.instagram.com/p/{post.shortcode}/"
+                    ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
                     cache[f'{ev["date"]}|{ev["venue"]}|{ev["title"].lower()[:24]}'] = ev
                     found += 1
             fails = 0
             time.sleep(2)  # buď hodný na rate-limit
         except Exception as e:
-            # IG je best-effort a vrtkavý (blokuje cloud IP) — selhání je normální,
-            # NEalertuj (žádné g.WARNINGS), jen zaloguj. Sticky cache drží dřív nalezené akce.
-            print(f"[warn] IG @{handle}: {type(e).__name__}: {str(e)[:60]}", file=sys.stderr)
+            # selhání = normální (IG se brání) → NEalertuj, jen zaloguj; cache drží dřívější.
+            print(f"[warn] IG @{handle}: {type(e).__name__}: {str(e)[:70]}", file=sys.stderr)
             fails += 1
-            if fails >= 3:   # 3× po sobě blok → IP zablokovaná, nemá smysl mlít dál
-                print("[warn] IG: 3× po sobě chyba/blok — nejspíš blokovaná IP, končím", file=sys.stderr)
+            if fails >= 3:
+                print("[warn] IG: 3× po sobě chyba — končím (blok/rate-limit)", file=sys.stderr)
                 break
             continue
 
