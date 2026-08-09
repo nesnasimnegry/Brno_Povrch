@@ -41,7 +41,7 @@ def main():
     if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode != 0:
         run("git", "commit", "-m", "auto(ig): lokalni scrape IG -> cache")
         run("git", "pull", "--rebase", "origin", "main")
-        run("git", "push")
+        run("git", "push", "origin", "main")
         print("Pushnuto — denní cloud grab akce roznese na web.")
     else:
         print("Cache beze změny — necommituji.")
