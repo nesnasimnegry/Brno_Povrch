@@ -307,9 +307,11 @@ def fetch_instagram(today, dry_run=False):
         print("[warn] instaloader chybí — IG přeskočeno", file=sys.stderr)
         return list(cache.values())
 
+    # max_connection_attempts=1 → na 429 nezkouší znovu (jinak by čekal ~11 min a visel workflow)
     L = instaloader.Instaloader(download_pictures=False, download_videos=False,
                                 download_comments=False, save_metadata=False,
-                                compress_json=False, quiet=True)
+                                compress_json=False, quiet=True,
+                                max_connection_attempts=1, request_timeout=20.0)
     user, pw = os.environ.get("IG_USER"), os.environ.get("IG_PASS")
     if user and pw:
         try:
@@ -318,7 +320,7 @@ def fetch_instagram(today, dry_run=False):
             print(f"[warn] IG login selhal ({e}) — jedu anonymně", file=sys.stderr)
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=IG_LOOKBACK_DAYS)
-    found = 0
+    found, fails = 0, 0
     for handle, venue in IG_ACCOUNTS.items():
         try:
             prof = instaloader.Profile.from_username(L.context, handle)
@@ -335,11 +337,16 @@ def fetch_instagram(today, dry_run=False):
                     ev["ticket"] = f"https://www.instagram.com/p/{post.shortcode}/"
                     cache[f'{ev["date"]}|{ev["venue"]}|{ev["title"].lower()[:24]}'] = ev
                     found += 1
-            time.sleep(3)  # buď hodný na rate-limit
+            fails = 0
+            time.sleep(2)  # buď hodný na rate-limit
         except Exception as e:
             # IG je best-effort a vrtkavý (blokuje cloud IP) — selhání je normální,
             # NEalertuj (žádné g.WARNINGS), jen zaloguj. Sticky cache drží dřív nalezené akce.
             print(f"[warn] IG @{handle}: {type(e).__name__}: {str(e)[:60]}", file=sys.stderr)
+            fails += 1
+            if fails >= 3:   # 3× po sobě blok → IP zablokovaná, nemá smysl mlít dál
+                print("[warn] IG: 3× po sobě chyba/blok — nejspíš blokovaná IP, končím", file=sys.stderr)
+                break
             continue
 
     if not dry_run:
