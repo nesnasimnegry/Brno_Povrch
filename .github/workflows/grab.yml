@@ -18,7 +18,11 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: python grab_povrch.py
-      - run: python grab_underground.py
+      - name: Grab underground (+ Instagram)
+        env:
+          IG_USER: ${{ secrets.IG_USER }}   # volitelné — odpadní IG účet pro spolehlivost + stories
+          IG_PASS: ${{ secrets.IG_PASS }}
+        run: python grab_underground.py
       - name: Notify subscribers
         env:
           SUBS_SECRET: ${{ secrets.SUBS_SECRET }}
@@ -29,7 +33,7 @@ jobs:
         run: |
           git config user.name "brno-scena-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/index.html data/announced.json
+          git add public/index.html data/announced.json data/ig_events.json
           if ! git diff --cached --quiet; then
             git commit -m "auto: tydenni doplneni akci + notifikace"
             git pull --rebase --autostash origin main

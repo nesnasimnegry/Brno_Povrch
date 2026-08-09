@@ -16,8 +16,11 @@ Použití:
 """
 import argparse
 import datetime
+import json
+import os
 import re
 import sys
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -195,6 +198,124 @@ def fetch_exit(today):
     return out
 
 
+# ------------------------------------------------------------------ Instagram
+# Underground akce z IG postů kurátorovaných klubů. ZDARMA přes instaloader.
+# Anonymně = best-effort (IG blokuje, hlavně z cloud IP). Spolehlivěji + stories:
+# přidej odpadní IG účet jako GitHub secrets IG_USER / IG_PASS (kód se nemění).
+IG_CACHE = "data/ig_events.json"     # sticky: akce vydrží, i když IG zrovna blokne
+IG_MAX_POSTS = 8                     # kolik posledních postů na účet
+IG_LOOKBACK_DAYS = 35                # jak staré posty ještě číst
+# ⚠️ ODHADNUTÉ HANDLY — MAJITELI: ověř/uprav na skutečná @ z Instagramu (jen underground kluby).
+IG_ACCOUNTS = {
+    "kabinetmuz": "kabinet",
+    "exitclubbrno": "exit",
+    "klubalterna": "alterna",
+    "industra.space": "industra",
+    "artbar.brno": "artbar",
+    "kcsibir": "sibir",
+    # "handle": "venue_id",  ← přidej další
+}
+_IG_LETTER = re.compile(r"[a-zžščřďťňáéíóúůě]", re.I)
+
+
+def _parse_ig_caption(text, venue, today, horizon):
+    """Z popisku IG postu zkusí akci. Vrátí event dict, nebo None (bez data v horizontu)."""
+    if not text:
+        return None
+    m = re.search(r"\b([0-3]?\d)\s*\.\s*([01]?\d)\.?\s*(20\d\d)?", text)
+    if not m:
+        return None
+    d, mo = int(m.group(1)), int(m.group(2))
+    if not (1 <= d <= 31 and 1 <= mo <= 12):
+        return None
+    y = int(m.group(3)) if m.group(3) else today.year
+    try:
+        dt = datetime.date(y, mo, d)
+        if not m.group(3) and dt < today:
+            dt = datetime.date(y + 1, mo, d)
+    except ValueError:
+        return None
+    if dt < today or dt > horizon:
+        return None
+    tm = re.search(r"\b([0-2]?\d)[:.h]([0-5]\d)\b", text)
+    tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
+    title = ""
+    for ln in text.split("\n"):
+        ln = ln.strip()
+        if len(ln) >= 4 and _IG_LETTER.search(ln) and not re.match(r"^[\d.\s:h]+$", ln):
+            title = ln[:120]
+            break
+    if not title:
+        title = text.strip()[:80]
+    if not title:
+        return None
+    return {"title": title, "date": dt.strftime("%Y-%m-%d"), "time": tstr, "venue": venue,
+            "genres": g.genre_for(text[:160], "koncert"), "ticket": "", "price": "",
+            "lineup": [], "blurb": title[:90], "desc": ""}
+
+
+def fetch_instagram(today, dry_run=False):
+    """Akce z IG postů (viz IG_ACCOUNTS). Sticky cache: nalezená akce vydrží přes výpadky IG.
+    Resilience: každý účet i celý IG selže bezpečně (→ WARNINGS, vrátí aspoň cache)."""
+    horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
+    today_s = today.strftime("%Y-%m-%d")
+    try:
+        cache = json.load(open(IG_CACHE, encoding="utf-8"))
+    except Exception:
+        cache = {}
+    cache = {k: v for k, v in cache.items() if isinstance(v, dict) and v.get("date", "") >= today_s}
+
+    try:
+        import instaloader
+    except ImportError:
+        print("[warn] instaloader chybí — IG přeskočeno", file=sys.stderr)
+        return list(cache.values())
+
+    L = instaloader.Instaloader(download_pictures=False, download_videos=False,
+                                download_comments=False, save_metadata=False,
+                                compress_json=False, quiet=True)
+    user, pw = os.environ.get("IG_USER"), os.environ.get("IG_PASS")
+    if user and pw:
+        try:
+            L.login(user, pw)
+        except Exception as e:
+            print(f"[warn] IG login selhal ({e}) — jedu anonymně", file=sys.stderr)
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=IG_LOOKBACK_DAYS)
+    found = 0
+    for handle, venue in IG_ACCOUNTS.items():
+        try:
+            prof = instaloader.Profile.from_username(L.context, handle)
+            n = 0
+            for post in prof.get_posts():
+                pd = post.date_utc
+                if pd.tzinfo is None:
+                    pd = pd.replace(tzinfo=datetime.timezone.utc)
+                if pd < cutoff or n >= IG_MAX_POSTS:
+                    break
+                n += 1
+                ev = _parse_ig_caption(post.caption or "", venue, today, horizon)
+                if ev:
+                    ev["ticket"] = f"https://www.instagram.com/p/{post.shortcode}/"
+                    cache[f'{ev["date"]}|{ev["venue"]}|{ev["title"].lower()[:24]}'] = ev
+                    found += 1
+            time.sleep(3)  # buď hodný na rate-limit
+        except Exception as e:
+            # IG je best-effort a vrtkavý (blokuje cloud IP) — selhání je normální,
+            # NEalertuj (žádné g.WARNINGS), jen zaloguj. Sticky cache drží dřív nalezené akce.
+            print(f"[warn] IG @{handle}: {type(e).__name__}: {str(e)[:60]}", file=sys.stderr)
+            continue
+
+    if not dry_run:
+        try:
+            os.makedirs("data", exist_ok=True)
+            json.dump(cache, open(IG_CACHE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        except Exception as e:
+            print(f"[warn] IG cache zápis selhal: {e}", file=sys.stderr)
+    print(f"[info] IG: nově {found}, v cache celkem {len(cache)}", file=sys.stderr)
+    return list(cache.values())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -208,7 +329,8 @@ def main():
         titles_by_date.setdefault(e["date"], []).append(e["title"])
     merged = list(goout)
     counts = []
-    for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)), ("Exit", fetch_exit(today))]:
+    for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)),
+                      ("Exit", fetch_exit(today)), ("Instagram", fetch_instagram(today, args.dry_run))]:
         c = 0
         for e in src:
             # Duplikát vůči už zařazeným? Fuzzy název NEBO stejné místo+den. GoOut má přednost.
