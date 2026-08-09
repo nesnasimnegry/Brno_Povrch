@@ -4,3 +4,4 @@ report.txt
 alert.txt
 .claude/*
 !.claude/skills/
+ig_user.txt
