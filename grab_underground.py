@@ -313,11 +313,21 @@ def fetch_instagram(today, dry_run=False):
                                 compress_json=False, quiet=True,
                                 max_connection_attempts=1, request_timeout=20.0)
     user, pw = os.environ.get("IG_USER"), os.environ.get("IG_PASS")
-    if user and pw:
+    if user:
         try:
-            L.login(user, pw)
+            L.load_session_from_file(user)   # session z lokálního `instaloader --login` (rezidenční IP)
+            print(f"[info] IG: session '{user}' načtena", file=sys.stderr)
+        except FileNotFoundError:
+            if pw:
+                try:
+                    L.login(user, pw)
+                    print(f"[info] IG: přihlášen '{user}'", file=sys.stderr)
+                except Exception as e:
+                    print(f"[warn] IG login selhal ({e}) — anonymně", file=sys.stderr)
+            else:
+                print(f"[warn] IG: session pro '{user}' nenalezena — anonymně", file=sys.stderr)
         except Exception as e:
-            print(f"[warn] IG login selhal ({e}) — jedu anonymně", file=sys.stderr)
+            print(f"[warn] IG session load selhal ({e}) — anonymně", file=sys.stderr)
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=IG_LOOKBACK_DAYS)
     found, fails = 0, 0
