@@ -250,13 +250,55 @@ def _strip(s):
                    if unicodedata.category(c) != "Mn").lower()
 
 
+# quality signály: co je pozdrav/inzerát (slop) a co naopak vypadá jako akce
+_GREET = re.compile(r"^(ahoj|[čc]au|c[uú]s|hej|zdar|nazdar|hello|hi|hey|dobr[ýy]|mil[ií]|draz[ií]|pozor)\b", re.I)
+_LOGISTICS = re.compile(r"omlouv|hled[aá]me|barman|posil[yu]|nab[ií]z[ií]me|sh[aá]n[ií]me|do na[šs]eho t[ýy]mu|"
+                        r"pracovat u n[áa]s|ohodnocen|nov[ýe] web|e-?shop|slev", re.I)
+_EVENT_SIGNAL = re.compile(
+    r"\b(line[\s\-]?up|b2b|support|live|koncert|p[áa]rty|rave|techno|house|hardtech|dnb|drum|festival|"
+    r"tour|k[řr]est|vstup|vstupn|door|start|hraje|zahraje|open\s?air|afterparty|dj)\b|"
+    r"\d{1,2}[:h]\d{2}|\d{2,4}\s?(k[čc]|czk|,-)|@[a-z0-9._]{3,}|[📍🎟💸📅🕐🕘🕙]", re.I)
+# řádky, co NEjsou název (field-labely / generické) — přeskočit při hledání názvu
+_LABEL = re.compile(r"^(vstup|line[\s-]?up|kdy\b|kde\b|cena|info|l[íi]stky|tickets?|doors?|start\b|"
+                    r"otev[íi]r|kapacit|program|open\s?air|afterparty|vstupenky|bio\b|more\b|"
+                    r"d[ůu]le[žz]it|pozor|people|lineup)", re.I)
+# název NEsmí vypadat jako věta: buď má VELKÁ PÍSMENA (jméno), nebo je krátký bez výplňových slov
+_HAS_CAPS = re.compile(r"[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{3,}")
+_FILLER = re.compile(r"\b(se|si|na|nás|v|ve|u|za|je|jsou|by|bude|budem|máme|máte|může[šs]|"
+                     r"těšit|info|najde|odkaz|biu|bio|tento|tomto|dnes|zítra|už|také|chce[šs]|přij[ďd])\b", re.I)
+
+
 def _ig_venue(text, default):
-    """Zkusí najít v popisku známé underground místo; jinak vrátí default (může být None)."""
+    """Místo z popisku: 1) @zmínka na známý klub, 2) klíčové slovo, 3) default účtu."""
     low = _strip(text)
+    for mm in re.findall(r"@([a-z0-9._]+)", low):
+        for kw, vid in VENUE_KW.items():
+            if kw in mm:
+                return vid
     for kw, vid in VENUE_KW.items():
         if kw in low:
             return vid
     return default
+
+
+def _ig_title(text):
+    """Název = první krátký „slušný" řádek (headline). Přeskočí pozdravy, field-labely
+    (Vstupné, Line-up…), @/#/datum. Vrátí '' když nic kvalitního → akci zahodíme."""
+    for ln in text.split("\n"):
+        ln = re.sub(r"^[^\w@#]+", "", ln.strip())     # osekej vedoucí emoji/symboly
+        if not ln or ln[0] in "#@" or _GREET.match(ln) or _LABEL.match(ln) or not _IG_LETTER.search(ln):
+            continue
+        if re.match(r"^[\d.\s:h|/]+$", ln):
+            continue
+        seg = re.split(r"\s[–—|]\s|\s-\s|\s/\s|:\s", ln, 1)[0].strip()
+        seg = re.sub(r"^(od\s+)?(\d{1,2}\.\s*\d{1,2}\.\s*(20\d\d)?|\d{1,2}[:h]\d{2})[\s–—-]*", "",
+                     seg, flags=re.I).strip()
+        if not (4 <= len(seg) <= 70) or _GREET.match(seg) or _LABEL.match(seg):
+            continue
+        # jméno akce/kapely: buď VELKÁ PÍSMENA, nebo krátké bez výplňových slov (ne věta)
+        if _HAS_CAPS.search(seg) or (len(seg) <= 24 and not _FILLER.search(seg)):
+            return seg[:70]
+    return ""
 
 
 def _parse_ig_caption(text, default_venue, today, horizon):
@@ -282,29 +324,21 @@ def _parse_ig_caption(text, default_venue, today, horizon):
         return None
     if dt < today or dt > horizon:
         return None
-    tm = re.search(r"\b([0-2]?\d)[:.h]([0-5]\d)\b", text)
-    tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
-    raw = ""
-    for ln in text.split("\n"):
-        ln = re.sub(r"^[^\w]+", "", ln.strip())          # osekej vedoucí emoji/symboly
-        if len(ln) >= 4 and _IG_LETTER.search(ln) and not re.match(r"^[\d.\s:h]+$", ln):
-            raw = ln
-            break
-    if not raw:
-        raw = re.sub(r"^[^\w]+", "", text.strip())
-    # usekni u 1. výrazného oddělovače (název akce/interpreta bývá na začátku)
-    cut = re.split(r"\s[–—|]\s|\s-\s|\s/\s|:\s", raw, 1)[0].strip()
-    title = cut if len(cut) >= 4 else raw
-    # osekni vedoucí datum/čas ("15. 8.", "od 22:00")
-    title = (re.sub(r"^(od\s+)?(\d{1,2}\.\s*\d{1,2}\.\s*(20\d\d)?|\d{1,2}[:h]\d{2})[\s–—-]*", "", title, flags=re.I).strip()
-             or title)[:80]
-    if not title:
+    # ---- QUALITY GATE: musí to vypadat jako akce, mít místo i čistý název ----
+    if _LOGISTICS.search(text) or not _EVENT_SIGNAL.search(text):
         return None
     venue = _ig_venue(text, default_venue)
     if not venue:
-        return None   # promotér bez rozpoznaného místa → nelze zařadit
+        return None
+    title = _ig_title(text)
+    if not title:
+        return None
+    tm = re.search(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text)
+    tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
+    pr = re.search(r"(\d{2,4})\s?(?:k[čc]|czk|,-)", text, re.I)
+    price = f"{pr.group(1)} Kč" if pr else ("zdarma" if re.search(r"zdarma|vstup voln|free", text, re.I) else "")
     return {"title": title, "date": dt.strftime("%Y-%m-%d"), "time": tstr, "venue": venue,
-            "genres": g.genre_for(text[:160], "koncert"), "ticket": "", "price": "",
+            "genres": g.genre_for(text[:200], "koncert"), "ticket": "", "price": price,
             "lineup": [], "blurb": title[:90], "desc": ""}
 
 
