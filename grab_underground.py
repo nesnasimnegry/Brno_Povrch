@@ -284,14 +284,20 @@ def _parse_ig_caption(text, default_venue, today, horizon):
         return None
     tm = re.search(r"\b([0-2]?\d)[:.h]([0-5]\d)\b", text)
     tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
-    title = ""
+    raw = ""
     for ln in text.split("\n"):
-        ln = re.sub(r"^[^\w]+", "", ln.strip())   # osekej vedoucí emoji/symboly
+        ln = re.sub(r"^[^\w]+", "", ln.strip())          # osekej vedoucí emoji/symboly
         if len(ln) >= 4 and _IG_LETTER.search(ln) and not re.match(r"^[\d.\s:h]+$", ln):
-            title = ln[:120]
+            raw = ln
             break
-    if not title:
-        title = re.sub(r"^[^\w]+", "", text.strip())[:80]
+    if not raw:
+        raw = re.sub(r"^[^\w]+", "", text.strip())
+    # usekni u 1. výrazného oddělovače (název akce/interpreta bývá na začátku)
+    cut = re.split(r"\s[–—|]\s|\s-\s|\s/\s|:\s", raw, 1)[0].strip()
+    title = cut if len(cut) >= 4 else raw
+    # osekni vedoucí datum/čas ("15. 8.", "od 22:00")
+    title = (re.sub(r"^(od\s+)?(\d{1,2}\.\s*\d{1,2}\.\s*(20\d\d)?|\d{1,2}[:h]\d{2})[\s–—-]*", "", title, flags=re.I).strip()
+             or title)[:80]
     if not title:
         return None
     venue = _ig_venue(text, default_venue)
@@ -353,7 +359,7 @@ def fetch_instagram(today, dry_run=False):
                 ev = _parse_ig_caption((it.get("caption") or {}).get("text") or "", venue, today, horizon)
                 if ev:
                     ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
-                    cache[f'{ev["date"]}|{ev["venue"]}|{ev["title"].lower()[:24]}'] = ev
+                    cache[f'{ev["date"]}|{ev["venue"]}'] = ev   # 1 akce na místo+den (sloučí promo-duplicity)
                     found += 1
             fails = 0
             time.sleep(2)  # buď hodný na rate-limit
