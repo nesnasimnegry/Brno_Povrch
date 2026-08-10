@@ -1,6 +1,6 @@
 {
  "2026-08-15|perpetuum": {
-  "title": "KOLIŠTĚ OPEN AIR → TRŽNICE ROOFTOP → AFTERPARTY → EXIT & TRŽNICE",
+  "title": "KOLIŠTĚ OPEN AIR",
   "date": "2026-08-15",
   "time": "17:00",
   "venue": "perpetuum",
@@ -10,7 +10,7 @@
   "ticket": "https://www.instagram.com/p/DbySGjIomEr/",
   "price": "150 Kč",
   "lineup": [],
-  "blurb": "KOLIŠTĚ OPEN AIR → TRŽNICE ROOFTOP → AFTERPARTY → EXIT & TRŽNICE",
+  "blurb": "KOLIŠTĚ OPEN AIR",
   "desc": ""
  },
  "2026-08-15|fraktal": {
@@ -39,6 +39,63 @@
   "price": "",
   "lineup": [],
   "blurb": "ECKO BAZZ /UG/",
+  "desc": ""
+ },
+ "2026-09-05|exit": {
+  "title": "VIIITO & John Sarkander",
+  "date": "2026-09-05",
+  "time": "20:00",
+  "venue": "exit",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/DbtQ8knNYLQ/",
+  "price": "",
+  "lineup": [],
+  "blurb": "VIIITO & John Sarkander",
+  "desc": ""
+ },
+ "2026-08-14|exit": {
+  "title": "EXIT Garden",
+  "date": "2026-08-14",
+  "time": "20:00",
+  "venue": "exit",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/DbnBlv7NA71/",
+  "price": "zdarma",
+  "lineup": [],
+  "blurb": "EXIT Garden",
+  "desc": ""
+ },
+ "2026-09-19|exit": {
+  "title": "EXIT At The Castle",
+  "date": "2026-09-19",
+  "time": "20:00",
+  "venue": "exit",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/Dbpy66Ft7iU/",
+  "price": "",
+  "lineup": [],
+  "blurb": "EXIT At The Castle",
+  "desc": ""
+ },
+ "2026-08-21|pulpit": {
+  "title": "SONICO",
+  "date": "2026-08-21",
+  "time": "23:00",
+  "venue": "pulpit",
+  "genres": [
+   "RAVE",
+   "TECHNO"
+  ],
+  "ticket": "https://www.instagram.com/p/Db3K_-kiJ8y/",
+  "price": "250 Kč",
+  "lineup": [],
+  "blurb": "SONICO",
   "desc": ""
  }
 }
