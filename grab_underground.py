@@ -289,6 +289,22 @@ def _ig_venue(text, default):
     return default
 
 
+# bold/fancy unicode run (𝐄𝐗𝐈𝐓 𝐆𝐚𝐫𝐝𝐞𝐧, 𝐑𝐞𝐝𝐥𝐢𝐠𝐡𝐭) — kluby jím píšou přímo NÁZEV akce
+_FANCY_RUN = re.compile(r"[\U0001D400-\U0001D7FF][\U0001D400-\U0001D7FF\s'’&/.\-]*"
+                        r"[\U0001D400-\U0001D7FF]")
+
+
+def _ig_bold_title(raw):
+    """Nejdelší bold-unicode fráze v popisku = kurátorovaný název akce (po NFKC → ASCII).
+    Bere jen víceslovné/delší (ne emphasis na jednom slově); '' když žádná."""
+    best = ""
+    for m in _FANCY_RUN.finditer(raw):
+        cand = unicodedata.normalize("NFKC", m.group()).strip()
+        if _IG_LETTER.search(cand) and (len(cand) >= 6 or " " in cand) and len(cand) > len(best):
+            best = cand
+    return best[:70] if best and not _LABEL.match(best) else ""
+
+
 def _ig_title(text):
     """Název = první krátký „slušný" řádek (headline). Přeskočí pozdravy, field-labely
     (Vstupné, Line-up…), @/#/datum. Vrátí '' když nic kvalitního → akci zahodíme."""
@@ -298,7 +314,7 @@ def _ig_title(text):
             continue
         if re.match(r"^[\d.\s:h|/]+$", ln):
             continue
-        seg = re.split(r"\s[–—|]\s|\s-\s|\s/\s|:\s", ln, 1)[0].strip()
+        seg = re.split(r"\s[–—|→➜»•·>]\s|\s-\s|\s/\s|:\s", ln, 1)[0].strip()
         seg = re.sub(r"^(od\s+)?(\d{1,2}\.\s*\d{1,2}\.\s*(20\d\d)?|\d{1,2}[:h]\d{2})[\s–—-]*", "",
                      seg, flags=re.I).strip()
         if not (4 <= len(seg) <= 70) or _GREET.match(seg) or _LABEL.match(seg):
@@ -309,45 +325,79 @@ def _ig_title(text):
     return ""
 
 
-def _parse_ig_caption(text, default_venue, today, horizon):
-    """Z popisku IG postu zkusí akci. Vrátí event dict, nebo None (chybí datum/místo/horizont)."""
+# relativní data (bez čísla) — kotví se na datum POSTU, ať staré posty spadnou do minulosti
+_WEEKDAYS = {"pondeli": 0, "utery": 1, "streda": 2, "stredu": 2, "ctvrtek": 3, "patek": 4,
+             "sobota": 5, "sobotu": 5, "nedele": 6, "nedeli": 6, "monday": 0, "tuesday": 1,
+             "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+_REL_WEEKDAY = re.compile(r"\b(?:tento|tuto|v|ve|uz|this|next|pristi|nejblizsi|nadchazejici)\s+("
+                          + "|".join(_WEEKDAYS) + r")\b")
+
+
+def _ig_relative_date(text, anchor):
+    """„dnes"/„zítra"/„tento pátek"/„this friday" → datum. Kotví na datum postu (anchor),
+    takže starý post se stejným textem spadne do minulosti a odfiltruje se (out-of-range)."""
+    low = _strip(text)
+    if re.search(r"\b(dnes|dneska|today|tonight)\b", low):
+        return anchor
+    if re.search(r"\b(zitra|tomorrow)\b", low):
+        return anchor + datetime.timedelta(days=1)
+    m = _REL_WEEKDAY.search(low)
+    if m:
+        return anchor + datetime.timedelta(days=(_WEEKDAYS[m.group(1)] - anchor.weekday()) % 7)
+    return None
+
+
+def _parse_ig_caption(text, default_venue, today, horizon, post_date=None):
+    """Z popisku IG postu zkusí akci. Vrátí (event_dict, "ok") nebo (None, důvod).
+    Důvod je krátký diagnostický kód (viz ig_debug.py) — produkční cesta ho ignoruje.
+    post_date = datum postu (kotva pro relativní data); chybí-li, kotví na today."""
     if not text:
-        return None
-    m = re.search(r"\b([0-3]?\d)\s*\.\s*([01]?\d)\.?\s*(20\d\d)?", text)
+        return None, "empty"
+    raw = text                                   # ponech originál pro detekci bold názvu
+    text = unicodedata.normalize("NFKC", text)   # 𝐄𝐗𝐈𝐓 → EXIT (kluby milují fancy fonty)
+    m = re.search(r"\b([0-3]?\d)\s*[./]\s*([01]?\d)[./]?\s*(20\d\d)?", text)   # 15.8 i 15/8
     if m:
         d, mo, yr = int(m.group(1)), int(m.group(2)), m.group(3)
     else:
         mw = _CZ_MONTH_RE.search(_strip(text))     # "15. srpna 2026" / "15 srpna"
-        if not mw:
-            return None
-        d, mo, yr = int(mw.group(1)), _CZ_MONTHS[mw.group(2)], mw.group(3)
-    if not (1 <= d <= 31 and 1 <= mo <= 12):
-        return None
-    y = int(yr) if yr else today.year
-    try:
-        dt = datetime.date(y, mo, d)
-        if not yr and dt < today:
-            dt = datetime.date(y + 1, mo, d)
-    except ValueError:
-        return None
+        d = mo = yr = None
+        if mw:
+            d, mo, yr = int(mw.group(1)), _CZ_MONTHS[mw.group(2)], mw.group(3)
+    if d is not None:
+        if not (1 <= d <= 31 and 1 <= mo <= 12):
+            return None, "bad-date"
+        y = int(yr) if yr else today.year
+        try:
+            dt = datetime.date(y, mo, d)
+            if not yr and dt < today:
+                dt = datetime.date(y + 1, mo, d)
+        except ValueError:
+            return None, "bad-date"
+    else:
+        dt = _ig_relative_date(text, post_date or today)   # „tento pátek" / „DNES" / „zítra"
+        if dt is None:
+            return None, "no-date"
     if dt < today or dt > horizon:
-        return None
+        return None, "out-of-range"
     # ---- QUALITY GATE: musí to vypadat jako akce, mít místo i čistý název ----
-    if _LOGISTICS.search(text) or not _EVENT_SIGNAL.search(text):
-        return None
+    if _LOGISTICS.search(text):
+        return None, "logistics"
+    if not _EVENT_SIGNAL.search(text):
+        return None, "no-signal"
     venue = _ig_venue(text, default_venue)
     if not venue:
-        return None
-    title = _ig_title(text)
+        return None, "no-venue"
+    title = _ig_bold_title(raw) or _ig_title(text)   # bold fráze = kurátorovaný název
     if not title:
-        return None
+        return None, "no-title"
     tm = re.search(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text)
     tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
     pr = re.search(r"(\d{2,4})\s?(?:k[čc]|czk|,-)", text, re.I)
     price = f"{pr.group(1)} Kč" if pr else ("zdarma" if re.search(r"zdarma|vstup voln|free", text, re.I) else "")
-    return {"title": title, "date": dt.strftime("%Y-%m-%d"), "time": tstr, "venue": venue,
-            "genres": g.genre_for(text[:200], "koncert"), "ticket": "", "price": price,
-            "lineup": [], "blurb": title[:90], "desc": ""}
+    ev = {"title": title, "date": dt.strftime("%Y-%m-%d"), "time": tstr, "venue": venue,
+          "genres": g.genre_for(text[:200], "koncert"), "ticket": "", "price": price,
+          "lineup": [], "blurb": title[:90], "desc": ""}
+    return ev, "ok"
 
 
 def fetch_instagram(today, dry_run=False):
@@ -398,7 +448,8 @@ def fetch_instagram(today, dry_run=False):
                 ts = it.get("taken_at") or 0
                 if ts and ts < cutoff:
                     break
-                ev = _parse_ig_caption((it.get("caption") or {}).get("text") or "", venue, today, horizon)
+                post_date = datetime.date.fromtimestamp(ts) if ts else today
+                ev, _reason = _parse_ig_caption((it.get("caption") or {}).get("text") or "", venue, today, horizon, post_date)
                 if ev:
                     ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
                     cache[f'{ev["date"]}|{ev["venue"]}'] = ev   # 1 akce na místo+den (sloučí promo-duplicity)
