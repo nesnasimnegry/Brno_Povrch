@@ -214,19 +214,27 @@ IG_HEADERS = {"User-Agent": IG_APP_UA, "X-IG-App-ID": "936619743392459", "X-ASBD
 # IG účet -> venue id. Klubové účty mají pevné místo; promotéři = None (venue se
 # detekuje z popisku, viz _ig_venue). MAJITELI: uprav dle reálných @ / míst.
 IG_ACCOUNTS = {
-    # kluby (pevné místo)
+    # kluby (pevné místo) — vše ověřeno přes IG API (existuje + je to ten klub)
     "perpetuumklub": "perpetuum",
     "perpetuum_techno_thursday": "perpetuum",
     "perpetuumdnbwednesday": "perpetuum",
     "fraktal_noise": "fraktal",
     "klub_alterna": "alterna",
     "artbar.club": "artbar",
-    # promotéři (místo z popisku)
+    "exitclubbrno": "exit",
+    "exitevents_cz": "exit",
+    "kabinet_muz": "kabinet",
+    "industrabrno": "industra",
+    "pul.pit": "pulpit",
+    "vibeclubbrno": "vibe",
+    "kc_sibir": "sibir",
+    # promotéři (místo se detekuje z popisku)
     "bassproof": None,
     "raisethebass_rave": None,
     "brnoparties": None,
     "wednesrave_brno": None,
     "brnoraves": None,
+    "brno_rave": None,
     "kpromotions.cz": None,
     "bestevents": None,
 }
