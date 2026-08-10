@@ -1,34 +1,6 @@
 {
- "2026-08-15|perpetuum|15. srpna od 17:00 rozje": {
-  "title": "15. srpna od 17:00 rozjedeme DANCEFLOOR přímo na střeše Tržnice v historickém centru Brna. ROOFTOP stage bude až do půln",
-  "date": "2026-08-15",
-  "time": "17:00",
-  "venue": "perpetuum",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/Db1Bb_BoQn6/",
-  "price": "",
-  "lineup": [],
-  "blurb": "15. srpna od 17:00 rozjedeme DANCEFLOOR přímo na střeše Tržnice v historickém centru Brna.",
-  "desc": ""
- },
- "2026-08-15|perpetuum|15. srpna spojí bassproo": {
-  "title": "15. srpna spojí Bassproof Fuze centrum Brna v jednu velkou hudební jízdu. Od 17:00 startujeme OPEN AIR v parku Koliště, ",
-  "date": "2026-08-15",
-  "time": "17:00",
-  "venue": "perpetuum",
-  "genres": [
-   "PÁRTY"
-  ],
-  "ticket": "https://www.instagram.com/p/DbySGjIomEr/",
-  "price": "",
-  "lineup": [],
-  "blurb": "15. srpna spojí Bassproof Fuze centrum Brna v jednu velkou hudební jízdu. Od 17:00 startuj",
-  "desc": ""
- },
- "2026-08-15|perpetuum|hej brno jedeme dál - 15": {
-  "title": "HEJ BRNO JEDEME DÁL - 15. 8. ovládne centrum Brna Bassproof Fuze! Čeká tě propojení hned několika míst s drum & bassem, ",
+ "2026-08-15|perpetuum": {
+  "title": "HEJ BRNO JEDEME DÁL",
   "date": "2026-08-15",
   "time": "17:00",
   "venue": "perpetuum",
@@ -38,11 +10,11 @@
   "ticket": "https://www.instagram.com/p/Dbqq6n2oN1n/",
   "price": "",
   "lineup": [],
-  "blurb": "HEJ BRNO JEDEME DÁL - 15. 8. ovládne centrum Brna Bassproof Fuze! Čeká tě propojení hned n",
+  "blurb": "HEJ BRNO JEDEME DÁL",
   "desc": ""
  },
- "2026-08-15|fraktal|melehale - edizione da g": {
-  "title": "MeleHale - Edizione da giardino / Spektrum garden 🪩",
+ "2026-08-15|fraktal": {
+  "title": "MeleHale",
   "date": "2026-08-15",
   "time": "14:00",
   "venue": "fraktal",
@@ -52,10 +24,10 @@
   "ticket": "https://www.instagram.com/p/DbiaubJDeDC/",
   "price": "",
   "lineup": [],
-  "blurb": "MeleHale - Edizione da giardino / Spektrum garden 🪩",
+  "blurb": "MeleHale",
   "desc": ""
  },
- "2026-08-12|alterna|ahoj!": {
+ "2026-08-12|alterna": {
   "title": "Ahoj!",
   "date": "2026-08-12",
   "time": "20:00",
@@ -69,8 +41,8 @@
   "blurb": "Ahoj!",
   "desc": ""
  },
- "2026-09-17|artbar|ecko bazz /ug/ – syrový ": {
-  "title": "ECKO BAZZ /UG/ – syrový rap napříč grimem, dancehallem a US hip-hopem, přímo z ugandské rapové scény. Kultovní jméno lab",
+ "2026-09-17|artbar": {
+  "title": "ECKO BAZZ /UG/",
   "date": "2026-09-17",
   "time": "20:00",
   "venue": "artbar",
@@ -80,11 +52,11 @@
   "ticket": "https://www.instagram.com/p/DakR3TLtgwl/",
   "price": "",
   "lineup": [],
-  "blurb": "ECKO BAZZ /UG/ – syrový rap napříč grimem, dancehallem a US hip-hopem, přímo z ugandské ra",
+  "blurb": "ECKO BAZZ /UG/",
   "desc": ""
  },
- "2026-08-21|artbar|brněnský dj kolektiv se ": {
-  "title": "Brněnský DJ kolektiv se sídlem ve sklepě Artbaru čerpá z moderní berlínské rave scény a nedělá tajnosti ze svého antifaš",
+ "2026-08-21|artbar": {
+  "title": "Brněnský DJ kolektiv se sídlem ve sklepě Artbaru čerpá z moderní berlínské rave ",
   "date": "2026-08-21",
   "time": "23:00",
   "venue": "artbar",
@@ -95,7 +67,7 @@
   "ticket": "https://www.instagram.com/p/DbSfElYnWPU/",
   "price": "",
   "lineup": [],
-  "blurb": "Brněnský DJ kolektiv se sídlem ve sklepě Artbaru čerpá z moderní berlínské rave scény a ne",
+  "blurb": "Brněnský DJ kolektiv se sídlem ve sklepě Artbaru čerpá z moderní berlínské rave ",
   "desc": ""
  }
 }
