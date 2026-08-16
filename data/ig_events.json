@@ -1,32 +1,4 @@
 {
- "2026-08-15|perpetuum": {
-  "title": "KOLIŠTĚ OPEN AIR",
-  "date": "2026-08-15",
-  "time": "17:00",
-  "venue": "perpetuum",
-  "genres": [
-   "PÁRTY"
-  ],
-  "ticket": "https://www.instagram.com/p/DbySGjIomEr/",
-  "price": "150 Kč",
-  "lineup": [],
-  "blurb": "KOLIŠTĚ OPEN AIR",
-  "desc": ""
- },
- "2026-08-15|fraktal": {
-  "title": "MeleHale",
-  "date": "2026-08-15",
-  "time": "14:00",
-  "venue": "fraktal",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/DbiaubJDeDC/",
-  "price": "zdarma",
-  "lineup": [],
-  "blurb": "MeleHale",
-  "desc": ""
- },
  "2026-09-17|artbar": {
   "title": "ECKO BAZZ /UG/",
   "date": "2026-09-17",
@@ -53,20 +25,6 @@
   "price": "",
   "lineup": [],
   "blurb": "VIIITO & John Sarkander",
-  "desc": ""
- },
- "2026-08-14|exit": {
-  "title": "EXIT Garden",
-  "date": "2026-08-14",
-  "time": "20:00",
-  "venue": "exit",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/DbnBlv7NA71/",
-  "price": "zdarma",
-  "lineup": [],
-  "blurb": "EXIT Garden",
   "desc": ""
  },
  "2026-09-19|exit": {
@@ -96,6 +54,93 @@
   "price": "250 Kč",
   "lineup": [],
   "blurb": "SONICO",
+  "desc": ""
+ },
+ "2026-09-14|kabinet": {
+  "title": ">>> BÉTON ARMÉ (CAN) + REMDIK (SK)",
+  "date": "2026-09-14",
+  "time": "20:00",
+  "venue": "kabinet",
+  "genres": [
+   "KONCERT",
+   "PUNK"
+  ],
+  "ticket": "https://www.instagram.com/p/DcA1aFMjYXV/",
+  "price": "",
+  "lineup": [],
+  "blurb": ">>> BÉTON ARMÉ (CAN) + REMDIK (SK)",
+  "desc": ""
+ },
+ "2026-08-30|kabinet": {
+  "title": ">>> TOTAL CHAOS (USA)",
+  "date": "2026-08-30",
+  "time": "20:00",
+  "venue": "kabinet",
+  "genres": [
+   "KONCERT",
+   "PUNK"
+  ],
+  "ticket": "https://www.instagram.com/p/Db-QrxKD9Dj/",
+  "price": "",
+  "lineup": [],
+  "blurb": ">>> TOTAL CHAOS (USA)",
+  "desc": ""
+ },
+ "2026-09-03|kabinet": {
+  "title": ">>> Velvet Suicide",
+  "date": "2026-09-03",
+  "time": "20:00",
+  "venue": "kabinet",
+  "genres": [
+   "KONCERT",
+   "PUNK"
+  ],
+  "ticket": "https://www.instagram.com/p/Db8pmGziHCb/",
+  "price": "",
+  "lineup": [],
+  "blurb": ">>> Velvet Suicide",
+  "desc": ""
+ },
+ "2026-09-25|industra": {
+  "title": "v 17:00 venku před INDUSTROU",
+  "date": "2026-09-25",
+  "time": "17:00",
+  "venue": "industra",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/DbGd6HrDPS1/",
+  "price": "",
+  "lineup": [],
+  "blurb": "v 17:00 venku před INDUSTROU",
+  "desc": ""
+ },
+ "2026-08-22|pulpit": {
+  "title": "OUTDOOR",
+  "date": "2026-08-22",
+  "time": "18:00",
+  "venue": "pulpit",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/Db_RugYiIhB/",
+  "price": "200 Kč",
+  "lineup": [],
+  "blurb": "OUTDOOR",
+  "desc": ""
+ },
+ "2026-08-18|sibir": {
+  "title": "Max Lysáček",
+  "date": "2026-08-18",
+  "time": "20:00",
+  "venue": "sibir",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/DbEWiVotpP-/",
+  "price": "",
+  "lineup": [],
+  "blurb": "Max Lysáček",
   "desc": ""
  }
 }
