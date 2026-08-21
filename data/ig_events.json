@@ -186,5 +186,47 @@
   "lineup": [],
   "blurb": ">>> BAJKAZYL SABAT",
   "desc": ""
+ },
+ "2026-09-12|exit": {
+  "title": "EXIT At The Castle",
+  "date": "2026-09-12",
+  "time": "20:00",
+  "venue": "exit",
+  "genres": [
+   "RAVE"
+  ],
+  "ticket": "https://www.instagram.com/p/DcS209EtaWb/",
+  "price": "",
+  "lineup": [],
+  "blurb": "EXIT At The Castle",
+  "desc": ""
+ },
+ "2026-09-16|kabinet": {
+  "title": ">>> hackedepicciotto (DE) + effata (SWE/DE)",
+  "date": "2026-09-16",
+  "time": "20:00",
+  "venue": "kabinet",
+  "genres": [
+   "KONCERT"
+  ],
+  "ticket": "https://www.instagram.com/p/DcQSIqiDSHa/",
+  "price": "",
+  "lineup": [],
+  "blurb": ">>> hackedepicciotto (DE) + effata (SWE/DE)",
+  "desc": ""
+ },
+ "2026-09-05|kabinet": {
+  "title": ">>> DEVIL MASTER (USA) + SOLOMONAR",
+  "date": "2026-09-05",
+  "time": "20:00",
+  "venue": "kabinet",
+  "genres": [
+   "RAVE"
+  ],
+  "ticket": "https://www.instagram.com/p/DcNtZboj9Yu/",
+  "price": "",
+  "lineup": [],
+  "blurb": ">>> DEVIL MASTER (USA) + SOLOMONAR",
+  "desc": ""
  }
 }
