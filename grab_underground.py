@@ -948,6 +948,42 @@ def _ig_scrape_stories(session, pk, handle, venue, cache, today, horizon):
     return n
 
 
+def ig_following_usernames(user):
+    """Follow-driven režim: seznam usernames, které účet <user> na IG SLEDUJE.
+    Načte session (jako fetch_instagram), projede friendships/following (stránkovaně).
+    [] při chybě → caller fallbackne na kurátorovaný IG_ACCOUNTS."""
+    try:
+        import instaloader
+    except ImportError:
+        return []
+    L = instaloader.Instaloader(quiet=True, max_connection_attempts=1, request_timeout=20.0)
+    try:
+        L.load_session_from_file(user)
+    except Exception as e:
+        print(f"[warn] IG following: session '{user}' nenačtena ({type(e).__name__})", file=sys.stderr)
+        return []
+    s = L.context._session
+    s.headers.update(IG_HEADERS)
+    own = next((c.value for c in s.cookies if c.name == "ds_user_id"), None)
+    if not own:
+        return []
+    out, max_id = [], ""
+    try:
+        for _ in range(12):     # strop stran (12×100 = až 1200 sledovaných)
+            url = (f"https://i.instagram.com/api/v1/friendships/{own}/following/?count=100"
+                   + (f"&max_id={max_id}" if max_id else ""))
+            r = s.get(url, timeout=20)
+            r.raise_for_status()
+            j = r.json()
+            out += [u["username"] for u in j.get("users", []) if u.get("username")]
+            max_id = j.get("next_max_id")
+            if not max_id:
+                break
+    except Exception as e:
+        print(f"[warn] IG following nešel načíst ({type(e).__name__}) — fallback na IG_ACCOUNTS", file=sys.stderr)
+    return out
+
+
 def fetch_instagram(today, dry_run=False, only=None):
     """Akce z IG postů (viz IG_ACCOUNTS). Sticky cache: nalezená akce vydrží přes výpadky IG.
     Resilience: každý účet i celý IG selže bezpečně (→ WARNINGS, vrátí aspoň cache)."""
@@ -993,10 +1029,10 @@ def fetch_instagram(today, dry_run=False, only=None):
 
     cutoff = time.time() - IG_LOOKBACK_DAYS * 86400
     found, fails = 0, 0
-    accounts = list(IG_ACCOUNTS.items())
-    if only is not None:            # trickle mód: scrapni jen vybrané účty (frontu řeší ig_trickle.py)
-        accounts = [(h, v) for h, v in accounts if h in only]
+    if only is not None:            # trickle/follow-driven: scrapni zadané účty; venue z mapy/handle
+        accounts = [(h, IG_ACCOUNTS.get(h) or _ig_venue(h, None)) for h in only]
     else:
+        accounts = list(IG_ACCOUNTS.items())
         random.shuffle(accounts)    # náhodné pořadí každý běh → žádný stálý vzor (anti-detekce)
     for handle, venue in accounts:
         try:

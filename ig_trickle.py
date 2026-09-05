@@ -39,10 +39,16 @@ def main():
             queue = []
     except Exception:
         queue = []
-    if not queue:                              # prázdná fronta → nové kolo (zamíchané pořadí)
-        queue = list(gu.IG_ACCOUNTS.keys())
+    if not queue:                              # prázdná fronta → nové kolo
+        if os.environ.get("IG_FOLLOW_DRIVEN", "1") != "0":   # B: ber vše, co ucet SLEDUJE (follow-driven)
+            queue = gu.ig_following_usernames(sys.argv[1])
+        if not queue:                                        # fallback: kurátorovaný seznam
+            queue = list(gu.IG_ACCOUNTS.keys())
         random.shuffle(queue)
-        print(f"[info] nové kolo: {len(queue)} účtů zamícháno", file=sys.stderr)
+        if len(queue) > 60:                                  # strop — drž follow list lean (anti-blok)
+            print(f"[warn] sleduješ {len(queue)} účtů; beru 60 (zbytek příště). Odsleduj nerelevantní.", file=sys.stderr)
+            queue = queue[:60]
+        print(f"[info] nové kolo: {len(queue)} účtů", file=sys.stderr)
 
     picked, rest = queue[:k], queue[k:]
     print(f"[info] trickle: scrapuju {picked} (po tomto zbývá {len(rest)})", file=sys.stderr)
