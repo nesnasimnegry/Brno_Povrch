@@ -901,7 +901,7 @@ def _ig_scrape_stories(session, pk, handle, venue, cache, today, horizon):
     return n
 
 
-def fetch_instagram(today, dry_run=False):
+def fetch_instagram(today, dry_run=False, only=None):
     """Akce z IG postů (viz IG_ACCOUNTS). Sticky cache: nalezená akce vydrží přes výpadky IG.
     Resilience: každý účet i celý IG selže bezpečně (→ WARNINGS, vrátí aspoň cache)."""
     horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
@@ -947,7 +947,10 @@ def fetch_instagram(today, dry_run=False):
     cutoff = time.time() - IG_LOOKBACK_DAYS * 86400
     found, fails = 0, 0
     accounts = list(IG_ACCOUNTS.items())
-    random.shuffle(accounts)        # náhodné pořadí každý běh → žádný stálý vzor (anti-detekce)
+    if only is not None:            # trickle mód: scrapni jen vybrané účty (frontu řeší ig_trickle.py)
+        accounts = [(h, v) for h, v in accounts if h in only]
+    else:
+        random.shuffle(accounts)    # náhodné pořadí každý běh → žádný stálý vzor (anti-detekce)
     for handle, venue in accounts:
         try:
             pk = pk_map.get(handle)
