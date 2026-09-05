@@ -363,6 +363,74 @@ def fetch_ra(today):
     return out
 
 
+# ------------------------------------------------------------------ koncertbrno
+# koncertbrno.cz — agregátor s JSON-LD (schema.org Event). Cloud, bez klíče. Hodně překryvů
+# (merge dedupne); přínos = promotérské one-offy mimo GoOut. Místo mapuje _ig_venue.
+KONCERTBRNO_URL = "https://www.koncertbrno.cz/"
+
+
+def fetch_koncertbrno(today):
+    """Akce z koncertbrno.cz přes JSON-LD Event. Místo mapuje _ig_venue (jen underground kluby;
+    veřejná/neznámá/mimo Brno zahodí). Resilience: výpadek jen zaloguje; pokažený blok přeskočí."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    try:
+        r = requests.get(KONCERTBRNO_URL, headers=g.UA, timeout=30)
+        r.raise_for_status()
+        r.encoding = "utf-8"      # web je UTF-8, ale requests to občas detekuje jako latin-1
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as e:
+        print(f"[warn] koncertbrno nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"koncertbrno nešel načíst: {e}")
+        return out
+    for blk in soup.find_all("script", type="application/ld+json"):
+        try:
+            d = json.loads(blk.string or "")
+        except Exception:
+            continue
+        for it in (d if isinstance(d, list) else [d]):
+            try:
+                if not isinstance(it, dict) or it.get("@type") not in ("Event", "MusicEvent", "Festival"):
+                    continue
+                mm = re.match(r"(\d{4}-\d\d-\d\d)", str(it.get("startDate") or ""))
+                if not mm or not (tmin <= mm.group(1) <= tmax):
+                    continue
+                date = mm.group(1)
+                tmt = re.search(r"T([0-2]\d):([0-5]\d)", str(it.get("startDate") or ""))
+                tstr = f"{tmt.group(1)}:{tmt.group(2)}" if tmt else "20:00"
+                loc = it.get("location") or {}
+                locname = loc.get("name") if isinstance(loc, dict) else ""
+                venue = _ig_venue(locname or "", None)
+                if not venue:
+                    continue     # neznámé/veřejné/mimo Brno místo → nech jinému zdroji
+                title = re.sub(r"\s*[-–]\s*Brno\s*$", "", (it.get("name") or "").strip(), flags=re.I).strip()
+                if not title:
+                    continue
+                off = it.get("offers") or {}
+                if isinstance(off, list):
+                    off = off[0] if off else {}
+                price = ""
+                try:
+                    pr = off.get("price") if isinstance(off, dict) else ""
+                    if pr:
+                        price = f"{int(float(pr))} Kč"
+                except (ValueError, TypeError):
+                    price = ""
+                cu = (off.get("url") if isinstance(off, dict) else "") or ""
+                ticket = cu if cu.startswith("http") else (KONCERTBRNO_URL + cu.lstrip("/") if cu else KONCERTBRNO_URL)
+                ev = {"title": title, "date": date, "time": tstr, "venue": venue,
+                      "genres": g.genre_for(title, "koncert"), "ticket": ticket,
+                      "price": price, "lineup": [], "blurb": title[:90], "desc": ""}
+                if _key(ev) in seen:
+                    continue
+                seen.add(_key(ev))
+                out.append(ev)
+            except Exception:
+                continue
+    return out
+
+
 # ------------------------------------------------------------------ Instagram
 # Underground akce z IG postů kurátorovaných klubů. ZDARMA, ale vyžaduje PŘIHLÁŠENOU
 # session (IG blokuje anonym i cloud IP). Lokálně: ig_session.py (import z prohlížeče)
@@ -951,7 +1019,7 @@ def main():
     counts = []
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)),
                       ("Exit", fetch_exit(today)), ("smsticket", fetch_smsticket(today)),
-                      ("RA", fetch_ra(today)),
+                      ("RA", fetch_ra(today)), ("koncertbrno", fetch_koncertbrno(today)),
                       ("Instagram", fetch_instagram(today, args.dry_run))]:
         c = 0
         for e in src:
