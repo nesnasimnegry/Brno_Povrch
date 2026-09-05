@@ -15,6 +15,7 @@ Použití:
     python grab_underground.py
 """
 import argparse
+import base64
 import datetime
 import json
 import os
@@ -313,7 +314,27 @@ if not IG_AI_KEY:
         IG_AI_KEY = ""
 IG_AI_BASE = os.environ.get("IG_AI_BASE", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
 IG_AI_MODEL = os.environ.get("IG_AI_MODEL", "gemini-flash-lite-latest")   # free, spolehlivé (flash-latest = 503), -latest = nevyřadí se
-_AI_STATE = {"fails": 0, "off": False}   # circuit breaker: po 5× selhání AI vypni na zbytek běhu
+_AI_STATE = {"fails": 0, "total_fails": 0, "calls": 0, "off": False}   # circuit breaker + strop volání
+IG_AI_MAX_CALLS = 200    # strop AI volání za běh (ochrana free kvóty)
+IG_STORY_MAX = 4         # kolik story framů na účet pustit do vize (mizí za 24h, čistě vizuální)
+IG_FEED_VISION_MAX = 3   # max vizí na feed-obrázky na účet (šetří IG traffic i AI kvótu)
+IG_STORIES = os.environ.get("IG_STORIES", "1") != "0"   # vypnutelné (IG_STORIES=0), když by tropilo blok
+
+
+def _ai_ok():
+    """AI/vize k dispozici? (klíč + nevypnuto breakerem + pod stropem volání za běh)"""
+    return bool(IG_AI_KEY) and not _AI_STATE["off"] and _AI_STATE["calls"] < IG_AI_MAX_CALLS
+
+
+def _ai_note_fail():
+    """Zaeviduj selhání AI; vypni AI na běh po 5× ZA SEBOU nebo 12× CELKEM (chytí i 429 sawtooth)."""
+    _AI_STATE["fails"] += 1
+    _AI_STATE["total_fails"] += 1
+    if not _AI_STATE["off"] and (_AI_STATE["fails"] >= 5 or _AI_STATE["total_fails"] >= 12):
+        _AI_STATE["off"] = True
+        print(f"[warn] IG AI vypnuta pro běh (za sebou {_AI_STATE['fails']}, celkem {_AI_STATE['total_fails']})",
+              file=sys.stderr)
+        g.WARNINGS.append("IG AI/vize opakovaně selhala — běh dojel na regex")
 # IG účet -> venue id. Klubové účty mají pevné místo; promotéři = None (venue se
 # detekuje z popisku, viz _ig_venue). MAJITELI: uprav dle reálných @ / míst.
 IG_ACCOUNTS = {
@@ -518,19 +539,80 @@ def _ig_venues_all(text):
     return found
 
 
+def _ai_known_venues():
+    return sorted(set(VENUE_KW.values()) | {v for v in IG_ACCOUNTS.values() if v})
+
+
+def _ai_chat(messages, json_mode=True):
+    """Jedno volání OpenAI-kompat chatu (Gemini/OpenRouter) → naparsovaný JSON dict.
+    Retry na 429/5xx (rate-limit/přetížení free tieru). Vyhodí výjimku při trvalé chybě."""
+    _AI_STATE["calls"] += 1     # počítá se do stropu IG_AI_MAX_CALLS (ochrana free kvóty)
+    body = {"model": IG_AI_MODEL, "temperature": 0, "messages": messages}
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    url = f"{IG_AI_BASE}/chat/completions"
+    hdr = {"Authorization": f"Bearer {IG_AI_KEY}", "Content-Type": "application/json"}
+    for attempt in range(3):
+        resp = requests.post(url, headers=hdr, json=body, timeout=60)
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+            time.sleep(3 * (attempt + 1))
+            continue
+        resp.raise_for_status()
+        break
+    content = resp.json()["choices"][0]["message"]["content"].strip()
+    content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.I | re.M).strip()
+    return json.loads(content)
+
+
+def _ai_validate_events(events, ctx_text, default_venue, today, horizon):
+    """Sdílená validace AI výstupu (text i vize). ctx_text = doprovodný text pro detekci
+    místa/žánru (u story prázdný). Žánr dál řeší pravidla g.genre_for — konzistentní, zdarma."""
+    known_set = set(_ai_known_venues())
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    mentioned = _ig_venues_all(ctx_text)
+    out = []
+    for it in events or []:
+        if not isinstance(it, dict):
+            continue
+        d = str(it.get("date") or "").strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", d) or not (tmin <= d <= tmax):
+            continue
+        try:
+            datetime.date.fromisoformat(d)           # kalendářně validní? (2026-09-31 → skip)
+        except ValueError:
+            continue
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        # Místo per-akci: věř známému AI místu, když ho ctx zmiňuje (nebo je domovské, nebo ctx
+        # žádné místo nezmiňuje — např. story) → drží multi-venue. Jinak detekce/domovské místo.
+        venue_ai = (it.get("venue") or "").strip().lower()
+        if venue_ai in known_set and (not mentioned or venue_ai in mentioned or venue_ai == default_venue):
+            venue = venue_ai
+        else:
+            venue = _ig_venue(ctx_text, default_venue)
+        if not venue:
+            continue
+        tm = re.match(r"^([0-2]?\d):([0-5]\d)$", (it.get("time") or "").strip())
+        tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
+        out.append({"title": title[:90], "date": d, "time": tstr, "venue": venue,
+                    "genres": g.genre_for((ctx_text or title)[:200], "koncert"), "ticket": "",
+                    "price": (it.get("price") or "").strip()[:20], "lineup": [],
+                    "blurb": title[:90], "desc": ""})
+    return out
+
+
 def _ai_extract(text, default_venue, today, horizon, post_date):
-    """LLM extrakce akcí z IG popisku přes OpenAI-kompat endpoint (Gemini/OpenRouter).
-    Vrátí seznam event dictů (0..N) při úspěchu, nebo vyhodí výjimku při chybě volání
-    (caller pak fallbackne na regex). Žánr dál řeší pravidla (g.genre_for) — konzistentní."""
+    """LLM extrakce akcí z IG popisku (TEXT). Vrátí seznam event dictů (0..N) nebo vyhodí
+    výjimku při chybě volání (caller fallbackne na regex)."""
     text = (text or "").strip()
     if not text:
         return []
-    known = sorted(set(VENUE_KW.values()) | {v for v in IG_ACCOUNTS.values() if v})
     tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
     prompt = (
         f"Dnešek: {tmin}. Horizont: {tmax}. Datum postu: {post_date}.\n"
         f"Výchozí místo účtu: {default_venue or 'neznámé'}.\n"
-        f"Povolená místa (venue id): {', '.join(known)}.\n\n"
+        f"Povolená místa (venue id): {', '.join(_ai_known_venues())}.\n\n"
         "Z popisku vytáhni všechny KONKRÉTNÍ akce (koncert/párty/rave/DJ set/festival/křest) "
         "s datem v rozmezí dnešek–horizont. Relativní data ('dnes','zítra','tento pátek') urči "
         "podle DATA POSTU. NEvymýšlej datum. Pozdravy, inzeráty (hledáme barmana/posily), rekapy "
@@ -543,71 +625,135 @@ def _ai_extract(text, default_venue, today, horizon, post_date):
         '"title":"název akce","venue":"venue id","price":"290 Kč nebo prázdné"}]}\n\n'
         f"POPISEK:\n{text[:1200]}"
     )
-    body = {"model": IG_AI_MODEL, "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [{"role": "system", "content": "Jsi extraktor akcí. Vracíš pouze validní JSON."},
-                         {"role": "user", "content": prompt}]}
-    url = f"{IG_AI_BASE}/chat/completions"
-    hdr = {"Authorization": f"Bearer {IG_AI_KEY}", "Content-Type": "application/json"}
-    for attempt in range(3):
-        resp = requests.post(url, headers=hdr, json=body, timeout=45)
-        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 2:
-            time.sleep(3 * (attempt + 1))   # rate-limit/přetížení free tieru → počkej a zkus znovu
-            continue
-        resp.raise_for_status()
-        break
-    content = resp.json()["choices"][0]["message"]["content"].strip()
-    content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.I | re.M).strip()
-    data = json.loads(content)
-    known_set = set(known)
-    out = []
-    for it in data.get("events", []):
-        d = str(it.get("date") or "").strip()
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", d) or not (tmin <= d <= tmax):
-            continue
-        try:
-            datetime.date.fromisoformat(d)           # kalendářně validní? (2026-09-31 → skip)
-        except ValueError:
-            continue
-        title = (it.get("title") or "").strip()
-        if not title:
-            continue
-        # Místo per-akci: věř známému AI místu, když ho popisek zmiňuje (nebo je domovské, nebo
-        # popisek žádné místo nezmiňuje) → drží multi-venue posty. Jinak detekce/domovské místo.
-        venue_ai = (it.get("venue") or "").strip().lower()
-        mentioned = _ig_venues_all(text)
-        if venue_ai in known_set and (not mentioned or venue_ai in mentioned or venue_ai == default_venue):
-            venue = venue_ai
-        else:
-            venue = _ig_venue(text, default_venue)
-        if not venue:
-            continue
-        tm = re.match(r"^([0-2]?\d):([0-5]\d)$", (it.get("time") or "").strip())
-        tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
-        out.append({"title": title[:90], "date": d, "time": tstr, "venue": venue,
-                    "genres": g.genre_for(text[:200], "koncert"), "ticket": "",
-                    "price": (it.get("price") or "").strip()[:20], "lineup": [],
-                    "blurb": title[:90], "desc": ""})
-    return out
+    data = _ai_chat([{"role": "system", "content": "Jsi extraktor akcí. Vracíš pouze validní JSON."},
+                     {"role": "user", "content": prompt}])
+    return _ai_validate_events(data.get("events"), text, default_venue, today, horizon)
+
+
+def _ai_extract_image(img_b64, ctx_text, default_venue, today, horizon, post_date):
+    """LLM VIZE: přečte akci z OBRÁZKU (flyer / reel cover / IG story). ctx_text = doprovodný
+    text postu (u story prázdný). Vrátí seznam event dictů nebo vyhodí výjimku."""
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    prompt = (
+        "Toto je flyer / reel cover / IG story hudební akce v Brně. Přečti text Z OBRÁZKU.\n"
+        f"Dnešek: {tmin}. Horizont: {tmax}. Datum postu: {post_date}.\n"
+        f"Výchozí místo účtu: {default_venue or 'neznámé'}.\n"
+        f"Povolená místa (venue id): {', '.join(_ai_known_venues())}.\n"
+        + (f"Doprovodný text postu: {ctx_text[:400]}\n" if ctx_text else "")
+        + "Vytáhni konkrétní akce s datem v rozmezí dnešek–horizont. Relativní data urči podle "
+        "data postu. NEvymýšlej datum. Když obrázek není konkrétní akce (jen logo/vibe/rekap/"
+        "obecné promo), vrať prázdný seznam. Do 'title' dej název akce/interpreta, ne banner "
+        "promotéra. Místo: venue id z povoleného seznamu, nebo výchozí místo účtu.\n"
+        'Vrať POUZE JSON: {"events":[{"date":"YYYY-MM-DD","time":"HH:MM nebo prázdné",'
+        '"title":"název akce","venue":"venue id","price":"290 Kč nebo prázdné"}]}'
+    )
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}]}]
+    data = _ai_chat(messages)
+    return _ai_validate_events(data.get("events"), ctx_text, default_venue, today, horizon)
 
 
 def _ig_extract(text, default_venue, today, horizon, post_date):
     """Akce z IG popisku: AI (když je klíč) s tvrdým fallbackem na regex parser.
     Vrací vždy seznam (0..N). AI nikdy nesmí shodit běh — jakákoli chyba → regex."""
-    if IG_AI_KEY and not _AI_STATE["off"]:
+    if _ai_ok():
         try:
             evs = _ai_extract(text, default_venue, today, horizon, post_date)   # [] = AI: žádná akce
             _AI_STATE["fails"] = 0
             return evs
         except Exception as e:
-            _AI_STATE["fails"] += 1
             print(f"[warn] IG AI extrakce selhala ({type(e).__name__}) → regex fallback", file=sys.stderr)
-            if _AI_STATE["fails"] >= 5:      # špatný/expirovaný klíč apod. → nevolat AI zbytek běhu
-                _AI_STATE["off"] = True
-                print("[warn] IG AI: 5× po sobě chyba — AI pro tento běh vypnuta (regex)", file=sys.stderr)
-                g.WARNINGS.append("IG AI extrakce opakovaně selhala — běh dojel na regex")
+            _ai_note_fail()
     ev, _r = _parse_ig_caption(text, default_venue, today, horizon, post_date)
     return [ev] if ev else []
+
+
+def _ig_best_image(item):
+    """Největší dostupná URL obrázku z IG feed/story položky (zvládne carousel). '' když nic
+    nebo při jakémkoli neočekávaném tvaru (NESMÍ vyhodit výjimku uprostřed feed-loopu)."""
+    try:
+        node = item
+        if isinstance(item, dict) and item.get("carousel_media"):
+            cm = item["carousel_media"]
+            node = cm[0] if isinstance(cm, list) and cm else item
+        cands = (node.get("image_versions2") or {}).get("candidates") if isinstance(node, dict) else None
+        if cands and isinstance(cands, list) and isinstance(cands[0], dict):
+            return cands[0].get("url") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _ig_download_b64(url, session):
+    """Stáhne obrázek přes IG session → base64 (nebo None). Strop velikosti proti přetečení."""
+    if not url:
+        return None
+    try:
+        r = session.get(url, timeout=20)
+        r.raise_for_status()
+        data = r.content
+        if not data or len(data) > 6_000_000:
+            return None
+        return base64.b64encode(data).decode()
+    except Exception:
+        return None
+
+
+def _ig_put(cache, ev, source):
+    """Zapíše akci do IG cache pod klíč date|venue. VIZE NEpřebije textový/dřívější zdroj
+    (text vyhrává, vize jen doplňuje prázdná místa). source ∈ {'text','vision'}. Vrátí 1/0."""
+    key = f'{ev["date"]}|{ev["venue"]}'
+    if source == "vision":
+        old = cache.get(key)
+        if old is not None and old.get("_src") != "vision":
+            return 0     # nepřebíjej lepší (textový/dřívější) zdroj vizí
+    ev["_src"] = source
+    cache[key] = ev
+    return 1
+
+
+def _ig_extract_image(img_b64, ctx_text, default_venue, today, horizon, post_date):
+    """Vize na obrázek (flyer/reel/story) → akce. Jen když AI běží a máme obrázek.
+    Nikdy neshodí běh; sdílí circuit breaker s _ig_extract (5× chyba → AI off pro běh)."""
+    if not (_ai_ok() and img_b64):
+        return []
+    try:
+        evs = _ai_extract_image(img_b64, ctx_text, default_venue, today, horizon, post_date)
+        _AI_STATE["fails"] = 0
+        return evs
+    except Exception as e:
+        print(f"[warn] IG vize selhala ({type(e).__name__})", file=sys.stderr)
+        _ai_note_fail()
+        return []
+
+
+def _ig_scrape_stories(session, pk, handle, venue, cache, today, horizon):
+    """Aktivní IG stories účtu → vize na framy. Vrátí počet přidaných akcí. Story mizí za 24h
+    a nemá caption → čistě vizuální. Plně chráněno: výpadek stories nesmí shodit běh."""
+    n = 0
+    try:
+        st = session.get(f"https://i.instagram.com/api/v1/feed/reels_media/?reel_ids={pk}", timeout=20)
+        st.raise_for_status()
+        j = st.json()
+        reels = j.get("reels") or j.get("reels_media") or {}
+        items = []
+        if isinstance(reels, dict):
+            node = reels.get(str(pk)) or reels.get(pk) or {}
+            items = node.get("items", []) if isinstance(node, dict) else []
+        elif isinstance(reels, list) and reels:
+            items = (reels[0] or {}).get("items", [])
+        for sit in items[:IG_STORY_MAX]:
+            sts = sit.get("taken_at") or 0
+            spd = datetime.date.fromtimestamp(sts) if sts else today
+            b64 = _ig_download_b64(_ig_best_image(sit), session)
+            for ev in _ig_extract_image(b64, "", venue, today, horizon, spd):
+                ev["ticket"] = f"https://www.instagram.com/{handle}/"
+                n += _ig_put(cache, ev, "vision")
+            time.sleep(1)   # pacing vizí — šetrně na rate-limit
+    except Exception as e:
+        print(f"[warn] IG stories @{handle}: {type(e).__name__}: {str(e)[:60]}", file=sys.stderr)
+    return n
 
 
 def fetch_instagram(today, dry_run=False):
@@ -654,16 +800,29 @@ def fetch_instagram(today, dry_run=False):
             pk = info.json()["user"]["pk"]
             feed = s.get(f"https://i.instagram.com/api/v1/feed/user/{pk}/?count={IG_MAX_POSTS}", timeout=20)
             feed.raise_for_status()
+            feed_vis = 0    # počítadlo vizí na feed-obrázky pro TENTO účet (strop IG_FEED_VISION_MAX)
             for it in feed.json().get("items", []):
                 ts = it.get("taken_at") or 0
                 if ts and ts < cutoff:
                     break
                 post_date = datetime.date.fromtimestamp(ts) if ts else today
                 cap_text = (it.get("caption") or {}).get("text") or ""
-                for ev in _ig_extract(cap_text, venue, today, horizon, post_date):
+                evs = _ig_extract(cap_text, venue, today, horizon, post_date)
+                for ev in evs:
                     ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
-                    cache[f'{ev["date"]}|{ev["venue"]}'] = ev   # 1 akce na místo+den (sloučí promo-duplicity)
-                    found += 1
+                    found += _ig_put(cache, ev, "text")
+                # VIZE na feed-obrázek JEN když: AI běží, text nic nedal, je to reel NEBO krátký
+                # caption (flyer), a nepřekročil se strop na účet → šetří IG traffic i AI kvótu.
+                if (not evs and _ai_ok() and feed_vis < IG_FEED_VISION_MAX
+                        and (it.get("product_type") == "clips" or len(cap_text.strip()) < 40)):
+                    feed_vis += 1
+                    b64 = _ig_download_b64(_ig_best_image(it), s)
+                    for ev in _ig_extract_image(b64, cap_text, venue, today, horizon, post_date):
+                        ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
+                        found += _ig_put(cache, ev, "vision")
+                    time.sleep(1)   # pacing stahování/vizí (šetrně na IG rate-limit)
+            if IG_STORIES and _ai_ok():      # STORIES (mizí za 24h) → jen vize
+                found += _ig_scrape_stories(s, pk, handle, venue, cache, today, horizon)
             fails = 0
             time.sleep(2)  # buď hodný na rate-limit
         except Exception as e:
