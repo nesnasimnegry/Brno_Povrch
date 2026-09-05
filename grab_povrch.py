@@ -320,6 +320,7 @@ def js_escape(s):
     # Znaky, které jinak rozbijí JS string literál → SyntaxError → bílá obrazovka pro všechny:
     s = s.replace("\u2028", " ").replace("\u2029", " ")   # JS radkove oddelovace
     s = re.sub(r"[\x00-\x1f]+", " ", s)                    # newline, tab, ostatní control znaky
+    s = s.replace("</", "<\\/")                            # </script> breakout z inline <script> (stejný string v JS)
     return s
 
 

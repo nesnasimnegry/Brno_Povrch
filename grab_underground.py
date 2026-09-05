@@ -199,6 +199,94 @@ def fetch_exit(today):
     return out
 
 
+# ------------------------------------------------------------------ smsticket
+# smsticket.cz místa: server-rendered HTML s RDFa mikrodaty (typeof="MusicEvent").
+# Spolehlivý CLOUD zdroj bez klíče a bez IG-blokování — pokrývá kluby, co dřív jely
+# jen přes křehký IG (Artbar, Perpetuum). Jedno místo = /mista/<id>. Čas v RDFa je UTC.
+SMSTICKET_BASE = "https://www.smsticket.cz"
+SMSTICKET_VENUES = [("1856", "artbar"), ("933", "perpetuum")]   # (smsticket id, venue v appce)
+_MUSIC_EVENT = re.compile(r"MusicEvent")
+
+
+def _prague_offset(d):
+    """Offset Europe/Prague (h) pro datum d, bez tzdata: CEST=+2 od poslední neděle v
+    březnu do poslední neděle v říjnu, jinak CET=+1. Hraniční hodinu přechodu neřeší."""
+    def last_sun(mon):
+        first_next = datetime.date(d.year + (mon == 12), (mon % 12) + 1, 1)
+        last = first_next - datetime.timedelta(days=1)
+        return last - datetime.timedelta(days=(last.weekday() - 6) % 7)
+    return 2 if last_sun(3) <= d < last_sun(10) else 1
+
+
+def fetch_smsticket(today):
+    """Akce z smsticket.cz míst (SMSTICKET_VENUES) přes RDFa MusicEvent mikrodata.
+    Resilience: výpadek místa jen zaloguje (→ WARNINGS), zbytek běží dál."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    ok_pages, total_blocks = 0, 0
+    for vid, venue in SMSTICKET_VENUES:
+        url = f"{SMSTICKET_BASE}/mista/{vid}"
+        try:
+            r = requests.get(url, headers=g.UA, timeout=30)
+            r.raise_for_status()
+        except Exception as e:
+            print(f"[warn] smsticket {venue} nešel načíst: {e}", file=sys.stderr)
+            g.WARNINGS.append(f"smsticket {venue} nešel načíst: {e}")
+            continue
+        ok_pages += 1
+        soup = BeautifulSoup(r.text, "html.parser")
+        blocks = soup.find_all(attrs={"typeof": _MUSIC_EVENT})
+        total_blocks += len(blocks)
+        for blk in blocks:
+            try:                             # celý blok chráněn: pokažená data 1 akce nesmí shodit běh
+                sd = blk.find(attrs={"property": "startDate"})
+                m = re.match(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)", (sd and sd.get("content")) or "")
+                if not m:
+                    continue
+                utc = datetime.datetime(*(int(x) for x in m.groups()))   # ValueError na nesmyslné datum
+                loc = utc + datetime.timedelta(hours=_prague_offset(utc.date()))
+                date, tstr = loc.strftime("%Y-%m-%d"), loc.strftime("%H:%M")
+                if not (tmin <= date <= tmax):
+                    continue
+                title = ""      # POZOR: první property="name" je název MÍSTA (nested typeof=Place)
+                for nm in blk.find_all(attrs={"property": "name"}):
+                    if nm.find_parent(attrs={"typeof": True}) is blk:   # jen název AKCE, ne místa
+                        title = nm.get_text(" ", strip=True) or (nm.get("content") or "")
+                        break
+                if not title:
+                    continue
+                ticket = url
+                for ln in blk.find_all(attrs={"property": "url"}):
+                    href = ln.get("href") or ln.get("content") or ""
+                    if "/vstupenky/" in href:
+                        ticket = href if href.startswith("http") else SMSTICKET_BASE + href
+                        break
+                pc = blk.find(attrs={"property": "price"})
+                price = ""
+                try:
+                    raw = (pc.get("content") or pc.get_text(strip=True)) if pc else ""
+                    if raw:
+                        price = f"{int(float(raw))} Kč"
+                except (ValueError, AttributeError):
+                    price = ""
+                e = {"title": title, "date": date, "time": tstr, "venue": venue,
+                     "genres": g.genre_for(title, "koncert"), "ticket": ticket,
+                     "price": price, "lineup": [], "blurb": title[:90], "desc": ""}
+                if _key(e) in seen:
+                    continue
+                seen.add(_key(e))
+                out.append(e)
+            except Exception as ex:
+                print(f"[warn] smsticket {venue}: blok přeskočen ({type(ex).__name__})", file=sys.stderr)
+                continue
+    # tiché selhání zdroje (změna struktury webu): stránky se načetly, ale 0 bloků nikde
+    if ok_pages and total_blocks == 0:
+        print("[warn] smsticket: 0 MusicEvent bloků — možná změna struktury webu", file=sys.stderr)
+        g.WARNINGS.append("smsticket: 0 MusicEvent bloků na všech místech (možná změna webu)")
+    return out
+
+
 # ------------------------------------------------------------------ Instagram
 # Underground akce z IG postů kurátorovaných klubů. ZDARMA, ale vyžaduje PŘIHLÁŠENOU
 # session (IG blokuje anonym i cloud IP). Lokálně: ig_session.py (import z prohlížeče)
@@ -211,6 +299,21 @@ IG_LOOKBACK_DAYS = 35                # jak staré posty ještě číst
 IG_APP_UA = ("Instagram 309.0.0.40.113 Android (30/11; 420dpi; 1080x2400; "
              "samsung; SM-G991B; o1s; exynos2100; en_US; 541134564)")
 IG_HEADERS = {"User-Agent": IG_APP_UA, "X-IG-App-ID": "936619743392459", "X-ASBD-ID": "198387"}
+
+# AI extrakce (volitelná): LLM narovná to, co regex nezvládá spolehlivě (fancy fonty,
+# relativní data, víc akcí v jednom postu, slop). Provider-agnostická přes OpenAI-kompat
+# endpoint (Google AI Studio / OpenRouter). Klíč JEN lokálně (scrape běží u majitele):
+# env IG_AI_KEY nebo soubor ig_ai.key (v .gitignore). BEZ klíče = fallback na regex
+# (cloud i kdokoli bez klíče → identické chování jako dřív).
+IG_AI_KEY = os.environ.get("IG_AI_KEY", "").strip()
+if not IG_AI_KEY:
+    try:
+        IG_AI_KEY = open("ig_ai.key", encoding="utf-8").read().strip()
+    except OSError:
+        IG_AI_KEY = ""
+IG_AI_BASE = os.environ.get("IG_AI_BASE", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+IG_AI_MODEL = os.environ.get("IG_AI_MODEL", "gemini-flash-lite-latest")   # free, spolehlivé (flash-latest = 503), -latest = nevyřadí se
+_AI_STATE = {"fails": 0, "off": False}   # circuit breaker: po 5× selhání AI vypni na zbytek běhu
 # IG účet -> venue id. Klubové účty mají pevné místo; promotéři = None (venue se
 # detekuje z popisku, viz _ig_venue). MAJITELI: uprav dle reálných @ / míst.
 IG_ACCOUNTS = {
@@ -400,6 +503,113 @@ def _parse_ig_caption(text, default_venue, today, horizon, post_date=None):
     return ev, "ok"
 
 
+def _ig_venues_all(text):
+    """Všechna známá místa zmíněná v popisku (@zmínky i klíčová slova). Pro ověření místa,
+    které vrátí AI — u multi-venue postů (promotér: víc akcí v různých klubech)."""
+    low = _strip(text)
+    found = set()
+    for mm in re.findall(r"@([a-z0-9._]+)", low):
+        for kw, vid in VENUE_KW.items():
+            if kw in mm:
+                found.add(vid)
+    for kw, vid in VENUE_KW.items():
+        if kw in low:
+            found.add(vid)
+    return found
+
+
+def _ai_extract(text, default_venue, today, horizon, post_date):
+    """LLM extrakce akcí z IG popisku přes OpenAI-kompat endpoint (Gemini/OpenRouter).
+    Vrátí seznam event dictů (0..N) při úspěchu, nebo vyhodí výjimku při chybě volání
+    (caller pak fallbackne na regex). Žánr dál řeší pravidla (g.genre_for) — konzistentní."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    known = sorted(set(VENUE_KW.values()) | {v for v in IG_ACCOUNTS.values() if v})
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    prompt = (
+        f"Dnešek: {tmin}. Horizont: {tmax}. Datum postu: {post_date}.\n"
+        f"Výchozí místo účtu: {default_venue or 'neznámé'}.\n"
+        f"Povolená místa (venue id): {', '.join(known)}.\n\n"
+        "Z popisku vytáhni všechny KONKRÉTNÍ akce (koncert/párty/rave/DJ set/festival/křest) "
+        "s datem v rozmezí dnešek–horizont. Relativní data ('dnes','zítra','tento pátek') urči "
+        "podle DATA POSTU. NEvymýšlej datum. Pozdravy, inzeráty (hledáme barmana/posily), rekapy "
+        "proběhlých akcí, merch/e-shop a obecné promo bez data → prázdný seznam.\n"
+        "Místo: použij venue id z povoleného seznamu; když popisek jiné nezmiňuje, použij výchozí "
+        "místo účtu; když místo nejde určit, akci vynech.\n"
+        "Do 'title' dej konkrétní název akce/interpreta (např. 'Ecko Bazz'), NE banner promotéra "
+        "('BASSPROOF pres. ...').\n"
+        'Vrať POUZE JSON: {"events":[{"date":"YYYY-MM-DD","time":"HH:MM nebo prázdné",'
+        '"title":"název akce","venue":"venue id","price":"290 Kč nebo prázdné"}]}\n\n'
+        f"POPISEK:\n{text[:1200]}"
+    )
+    body = {"model": IG_AI_MODEL, "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "system", "content": "Jsi extraktor akcí. Vracíš pouze validní JSON."},
+                         {"role": "user", "content": prompt}]}
+    url = f"{IG_AI_BASE}/chat/completions"
+    hdr = {"Authorization": f"Bearer {IG_AI_KEY}", "Content-Type": "application/json"}
+    for attempt in range(3):
+        resp = requests.post(url, headers=hdr, json=body, timeout=45)
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+            time.sleep(3 * (attempt + 1))   # rate-limit/přetížení free tieru → počkej a zkus znovu
+            continue
+        resp.raise_for_status()
+        break
+    content = resp.json()["choices"][0]["message"]["content"].strip()
+    content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.I | re.M).strip()
+    data = json.loads(content)
+    known_set = set(known)
+    out = []
+    for it in data.get("events", []):
+        d = str(it.get("date") or "").strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", d) or not (tmin <= d <= tmax):
+            continue
+        try:
+            datetime.date.fromisoformat(d)           # kalendářně validní? (2026-09-31 → skip)
+        except ValueError:
+            continue
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        # Místo per-akci: věř známému AI místu, když ho popisek zmiňuje (nebo je domovské, nebo
+        # popisek žádné místo nezmiňuje) → drží multi-venue posty. Jinak detekce/domovské místo.
+        venue_ai = (it.get("venue") or "").strip().lower()
+        mentioned = _ig_venues_all(text)
+        if venue_ai in known_set and (not mentioned or venue_ai in mentioned or venue_ai == default_venue):
+            venue = venue_ai
+        else:
+            venue = _ig_venue(text, default_venue)
+        if not venue:
+            continue
+        tm = re.match(r"^([0-2]?\d):([0-5]\d)$", (it.get("time") or "").strip())
+        tstr = f"{int(tm.group(1)):02d}:{tm.group(2)}" if tm and int(tm.group(1)) < 24 else "20:00"
+        out.append({"title": title[:90], "date": d, "time": tstr, "venue": venue,
+                    "genres": g.genre_for(text[:200], "koncert"), "ticket": "",
+                    "price": (it.get("price") or "").strip()[:20], "lineup": [],
+                    "blurb": title[:90], "desc": ""})
+    return out
+
+
+def _ig_extract(text, default_venue, today, horizon, post_date):
+    """Akce z IG popisku: AI (když je klíč) s tvrdým fallbackem na regex parser.
+    Vrací vždy seznam (0..N). AI nikdy nesmí shodit běh — jakákoli chyba → regex."""
+    if IG_AI_KEY and not _AI_STATE["off"]:
+        try:
+            evs = _ai_extract(text, default_venue, today, horizon, post_date)   # [] = AI: žádná akce
+            _AI_STATE["fails"] = 0
+            return evs
+        except Exception as e:
+            _AI_STATE["fails"] += 1
+            print(f"[warn] IG AI extrakce selhala ({type(e).__name__}) → regex fallback", file=sys.stderr)
+            if _AI_STATE["fails"] >= 5:      # špatný/expirovaný klíč apod. → nevolat AI zbytek běhu
+                _AI_STATE["off"] = True
+                print("[warn] IG AI: 5× po sobě chyba — AI pro tento běh vypnuta (regex)", file=sys.stderr)
+                g.WARNINGS.append("IG AI extrakce opakovaně selhala — běh dojel na regex")
+    ev, _r = _parse_ig_caption(text, default_venue, today, horizon, post_date)
+    return [ev] if ev else []
+
+
 def fetch_instagram(today, dry_run=False):
     """Akce z IG postů (viz IG_ACCOUNTS). Sticky cache: nalezená akce vydrží přes výpadky IG.
     Resilience: každý účet i celý IG selže bezpečně (→ WARNINGS, vrátí aspoň cache)."""
@@ -449,8 +659,8 @@ def fetch_instagram(today, dry_run=False):
                 if ts and ts < cutoff:
                     break
                 post_date = datetime.date.fromtimestamp(ts) if ts else today
-                ev, _reason = _parse_ig_caption((it.get("caption") or {}).get("text") or "", venue, today, horizon, post_date)
-                if ev:
+                cap_text = (it.get("caption") or {}).get("text") or ""
+                for ev in _ig_extract(cap_text, venue, today, horizon, post_date):
                     ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
                     cache[f'{ev["date"]}|{ev["venue"]}'] = ev   # 1 akce na místo+den (sloučí promo-duplicity)
                     found += 1
@@ -489,7 +699,8 @@ def main():
     merged = list(goout)
     counts = []
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)),
-                      ("Exit", fetch_exit(today)), ("Instagram", fetch_instagram(today, args.dry_run))]:
+                      ("Exit", fetch_exit(today)), ("smsticket", fetch_smsticket(today)),
+                      ("Instagram", fetch_instagram(today, args.dry_run))]:
         c = 0
         for e in src:
             # Duplikát vůči už zařazeným? Fuzzy název NEBO stejné místo+den. GoOut má přednost.

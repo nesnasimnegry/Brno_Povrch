@@ -5,3 +5,4 @@ alert.txt
 .claude/*
 !.claude/skills/
 ig_user.txt
+ig_ai.key
