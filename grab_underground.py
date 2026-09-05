@@ -19,6 +19,7 @@ import base64
 import datetime
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -288,6 +289,80 @@ def fetch_smsticket(today):
     return out
 
 
+# ------------------------------------------------------------------ Resident Advisor
+# ra.co GraphQL — brněnské techno/electronic akce (area "Brno" = 676). Cloud, bez auth,
+# čistý JSON (jako GoOut). Doplněk k IG: spolehlivě chytá ticketované rave/techno bez IG.
+RA_URL = "https://ra.co/graphql"
+RA_AREA_BRNO = 676
+RA_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Referer": "https://ra.co/events/cz/brno", "Origin": "https://ra.co",
+    "ra-content-language": "en",
+}
+RA_QUERY = ("query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int) "
+            "{ eventListings(filters: $filters, pageSize: $pageSize, page: $page) "
+            "{ data { id event { id title date startTime contentUrl "
+            "artists { name } venue { name } } } totalResults } }")
+
+
+def fetch_ra(today):
+    """Akce z Resident Advisoru (ra.co GraphQL, area Brno=676). Místo mapuje _ig_venue přes
+    VENUE_KW (jen underground kluby); veřejná/neznámá místa zahodí (nechá POVRCH grabberu).
+    Resilience: výpadek jen zaloguje (→ WARNINGS); jeden pokažený blok neshodí zbytek."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    variables = {"filters": {"areas": {"eq": RA_AREA_BRNO},
+                             "listingDate": {"gte": tmin, "lte": tmax}},
+                 "pageSize": 100, "page": 1}
+    try:
+        r = requests.post(RA_URL, json={"query": RA_QUERY, "variables": variables},
+                          headers=RA_HEADERS, timeout=30)
+        r.raise_for_status()
+        j = r.json()
+        if j.get("errors"):     # GraphQL vrací chyby i s HTTP 200 (schema/field rename) → alertuj
+            raise ValueError(f"GraphQL: {str(j['errors'])[:120]}")
+        rows = (((j.get("data") or {}).get("eventListings") or {}).get("data")) or []
+    except Exception as e:
+        print(f"[warn] Resident Advisor nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"Resident Advisor nešel načíst: {e}")
+        return out
+    for row in rows:
+        try:
+            e = row.get("event") or {}
+            mm = re.match(r"(\d{4}-\d\d-\d\d)", e.get("date") or "")
+            if not mm:
+                continue
+            date = mm.group(1)
+            if not (tmin <= date <= tmax):
+                continue
+            venue = _ig_venue((e.get("venue") or {}).get("name") or "", None)
+            if not venue:
+                continue     # veřejné/neznámé místo → nech POVRCH grabberu (GoOut)
+            title = (e.get("title") or "").strip()
+            if not title:
+                continue
+            tm = re.search(r"T([0-2]\d):([0-5]\d)", e.get("startTime") or "")
+            tstr = f"{tm.group(1)}:{tm.group(2)}" if tm else "20:00"
+            lineup = [a.get("name", "").strip() for a in (e.get("artists") or []) if a.get("name")]
+            cu = e.get("contentUrl") or ""
+            ticket = ("https://ra.co" + cu) if cu.startswith("/") else (cu or "https://ra.co")
+            ev = {"title": title, "date": date, "time": tstr, "venue": venue,
+                  "genres": g.genre_for((title + " " + " ".join(lineup))[:200], "koncert"),
+                  "ticket": ticket, "price": "", "lineup": lineup[:6],
+                  "blurb": title[:90], "desc": ""}
+            if _key(ev) in seen:
+                continue
+            seen.add(_key(ev))
+            out.append(ev)
+        except Exception as ex:
+            print(f"[warn] RA blok přeskočen ({type(ex).__name__})", file=sys.stderr)
+            continue
+    return out
+
+
 # ------------------------------------------------------------------ Instagram
 # Underground akce z IG postů kurátorovaných klubů. ZDARMA, ale vyžaduje PŘIHLÁŠENOU
 # session (IG blokuje anonym i cloud IP). Lokálně: ig_session.py (import z prohlížeče)
@@ -295,6 +370,8 @@ def fetch_smsticket(today):
 # Pozn.: web_profile_info je u IG rozbitý ("laser.provider" 400), proto jedeme přes
 # privátní mobilní API (usernameinfo + feed/user) s hlavičkou X-IG-App-ID.
 IG_CACHE = "data/ig_events.json"     # sticky: akce vydrží, i když IG zrovna blokne
+IG_PK_CACHE = "data/ig_pk.json"      # cache handle->pk (vynechá usernameinfo = půl volání, menší stopa)
+IG_DELAY = float(os.environ.get("IG_DELAY", "40"))   # ~s mezi účty (jitter ±50%) proti burst-detekci
 IG_MAX_POSTS = 8                     # kolik posledních postů na účet
 IG_LOOKBACK_DAYS = 35                # jak staré posty ještě číst
 IG_APP_UA = ("Instagram 309.0.0.40.113 Android (30/11; 420dpi; 1080x2400; "
@@ -790,15 +867,28 @@ def fetch_instagram(today, dry_run=False):
         return list(cache.values())
     s = L.context._session
     s.headers.update(IG_HEADERS)   # web_profile_info je rozbitý → privátní mobilní API
+    sess = s   # curl_cffi (chrome TLS) zvážen a ZAVRŽEN: náš blok je BEHAVIORÁLNÍ (feedback_required/
+               # spam), ne TLS-fingerprint; chrome-TLS + Android-UA na mobilním API je nekoherentní.
+               # Fix = tempo/náhodné pořadí/pk-cache níže, ne TLS.
+
+    try:
+        pk_map = json.load(open(IG_PK_CACHE, encoding="utf-8"))
+    except Exception:
+        pk_map = {}
 
     cutoff = time.time() - IG_LOOKBACK_DAYS * 86400
     found, fails = 0, 0
-    for handle, venue in IG_ACCOUNTS.items():
+    accounts = list(IG_ACCOUNTS.items())
+    random.shuffle(accounts)        # náhodné pořadí každý běh → žádný stálý vzor (anti-detekce)
+    for handle, venue in accounts:
         try:
-            info = s.get(f"https://i.instagram.com/api/v1/users/{handle}/usernameinfo/", timeout=20)
-            info.raise_for_status()
-            pk = info.json()["user"]["pk"]
-            feed = s.get(f"https://i.instagram.com/api/v1/feed/user/{pk}/?count={IG_MAX_POSTS}", timeout=20)
+            pk = pk_map.get(handle)
+            if not pk:              # neznámé pk → dotáhni usernameinfo; jinak ho vynech (míň volání)
+                info = sess.get(f"https://i.instagram.com/api/v1/users/{handle}/usernameinfo/", timeout=20)
+                info.raise_for_status()
+                pk = info.json()["user"]["pk"]
+                pk_map[handle] = pk
+            feed = sess.get(f"https://i.instagram.com/api/v1/feed/user/{pk}/?count={IG_MAX_POSTS}", timeout=20)
             feed.raise_for_status()
             feed_vis = 0    # počítadlo vizí na feed-obrázky pro TENTO účet (strop IG_FEED_VISION_MAX)
             for it in feed.json().get("items", []):
@@ -816,18 +906,19 @@ def fetch_instagram(today, dry_run=False):
                 if (not evs and _ai_ok() and feed_vis < IG_FEED_VISION_MAX
                         and (it.get("product_type") == "clips" or len(cap_text.strip()) < 40)):
                     feed_vis += 1
-                    b64 = _ig_download_b64(_ig_best_image(it), s)
+                    b64 = _ig_download_b64(_ig_best_image(it), sess)
                     for ev in _ig_extract_image(b64, cap_text, venue, today, horizon, post_date):
                         ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
                         found += _ig_put(cache, ev, "vision")
                     time.sleep(1)   # pacing stahování/vizí (šetrně na IG rate-limit)
             if IG_STORIES and _ai_ok():      # STORIES (mizí za 24h) → jen vize
-                found += _ig_scrape_stories(s, pk, handle, venue, cache, today, horizon)
+                found += _ig_scrape_stories(sess, pk, handle, venue, cache, today, horizon)
             fails = 0
-            time.sleep(2)  # buď hodný na rate-limit
+            time.sleep(random.uniform(IG_DELAY * 0.5, IG_DELAY * 1.5))  # jitter mezi účty (anti-burst)
         except Exception as e:
             # selhání = normální (IG se brání) → NEalertuj, jen zaloguj; cache drží dřívější.
             print(f"[warn] IG @{handle}: {type(e).__name__}: {str(e)[:70]}", file=sys.stderr)
+            pk_map.pop(handle, None)   # zahoď možná zastaralé pk → příště se přeresolvne přes usernameinfo
             fails += 1
             if fails >= 3:
                 print("[warn] IG: 3× po sobě chyba — končím (blok/rate-limit)", file=sys.stderr)
@@ -838,6 +929,7 @@ def fetch_instagram(today, dry_run=False):
         try:
             os.makedirs("data", exist_ok=True)
             json.dump(cache, open(IG_CACHE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            json.dump(pk_map, open(IG_PK_CACHE, "w", encoding="utf-8"))
         except Exception as e:
             print(f"[warn] IG cache zápis selhal: {e}", file=sys.stderr)
     print(f"[info] IG: nově {found}, v cache celkem {len(cache)}", file=sys.stderr)
@@ -859,6 +951,7 @@ def main():
     counts = []
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)),
                       ("Exit", fetch_exit(today)), ("smsticket", fetch_smsticket(today)),
+                      ("RA", fetch_ra(today)),
                       ("Instagram", fetch_instagram(today, args.dry_run))]:
         c = 0
         for e in src:
