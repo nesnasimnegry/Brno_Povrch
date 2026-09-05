@@ -713,6 +713,8 @@ document.getElementById("app").addEventListener("click",e=>{document.querySelect
  const b=e.target.closest("[data-follow]");if(!b)return;e.preventDefault();toggleFollow(b.dataset.follow,b.dataset.key);router(true);});
 router();
 (function(){var p=(location.hash||"").replace(/^#\//,"").split("/"),r0=p[0];var _entered=sessionStorage.getItem("bu_entered")==="1";if((!r0||r0==="home")&&!_entered)return;var m=null;if(r0==="klub"&&p[1]&&V[p[1]])m=V[p[1]].mode;else if(r0==="akce"&&p[1]){var ev=getAll().find(function(x){return x.id===p[1];});if(ev)m=ev.mode;}if(m){MODE=m;document.body.className="mode-"+MODE;router();}var iv=document.getElementById("intro");if(iv){iv.classList.add("hide");iv.style.display="none";}})();
+/* Auto-refresh: návrat appky na popředí po >3 h → tichý reload = čerstvé akce (žádný SW, route v hashi zůstane, offline se přeskočí). */
+(function(){var _loaded=Date.now(),_MAX=3*36e5;document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&navigator.onLine&&Date.now()-_loaded>_MAX)location.reload();});})();
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1130cb5ba45e43c8901f887390d8ca3b"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
