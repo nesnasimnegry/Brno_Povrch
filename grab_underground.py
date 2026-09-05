@@ -21,7 +21,10 @@ import json
 import os
 import random
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 
@@ -845,6 +848,50 @@ def _ig_download_b64(url, session):
         return None
 
 
+def _ig_best_video(item):
+    """URL videa reelu (nejvyšší dostupná verze). '' když to není video/reel."""
+    try:
+        node = item
+        if isinstance(item, dict) and item.get("carousel_media"):
+            cm = item["carousel_media"]
+            node = cm[0] if isinstance(cm, list) and cm else item
+        vv = node.get("video_versions") if isinstance(node, dict) else None
+        if vv and isinstance(vv, list) and isinstance(vv[0], dict):
+            return vv[0].get("url") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _ig_reel_frame_b64(video_url, session, at="00:00:01"):
+    """Stáhne video reelu a vytáhne snímek v čase `at` přes ffmpeg → base64. None při chybě
+    (chybí ffmpeg / krátké video / stažení selže) → caller fallbackne na cover obrázek.
+    Pozn.: reely mívají flyer/info až pár vteřin dovnitř, ne na coveru → proto snímek v 1. s."""
+    if not video_url or not shutil.which("ffmpeg"):
+        return None
+    tmpd = tempfile.mkdtemp(prefix="igreel_")
+    vin, fout = os.path.join(tmpd, "r.mp4"), os.path.join(tmpd, "f.jpg")
+    try:
+        r = session.get(video_url, timeout=30)
+        r.raise_for_status()
+        data = r.content
+        if not data or len(data) > 40_000_000:
+            return None
+        with open(vin, "wb") as f:
+            f.write(data)
+        subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-ss", at, "-i", vin,
+                        "-frames:v", "1", "-q:v", "3", "-y", fout],
+                       timeout=90, check=False)
+        if os.path.exists(fout) and os.path.getsize(fout) > 0:
+            with open(fout, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        return None
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+
+
 def _ig_put(cache, ev, source):
     """Zapíše akci do IG cache pod klíč date|venue. VIZE NEpřebije textový/dřívější zdroj
     (text vyhrává, vize jen doplňuje prázdná místa). source ∈ {'text','vision'}. Vrátí 1/0."""
@@ -977,7 +1024,11 @@ def fetch_instagram(today, dry_run=False, only=None):
                 if (not evs and _ai_ok() and feed_vis < IG_FEED_VISION_MAX
                         and (it.get("product_type") == "clips" or len(cap_text.strip()) < 40)):
                     feed_vis += 1
-                    b64 = _ig_download_b64(_ig_best_image(it), sess)
+                    b64 = None
+                    if it.get("product_type") == "clips":     # reel → snímek videa v 1. s (ffmpeg)
+                        b64 = _ig_reel_frame_b64(_ig_best_video(it), sess)
+                    if not b64:                                # ne-reel, nebo ffmpeg/video selhal → cover
+                        b64 = _ig_download_b64(_ig_best_image(it), sess)
                     for ev in _ig_extract_image(b64, cap_text, venue, today, horizon, post_date):
                         ev["ticket"] = f"https://www.instagram.com/p/{it.get('code')}/"
                         found += _ig_put(cache, ev, "vision")
