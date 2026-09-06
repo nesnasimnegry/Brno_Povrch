@@ -13,20 +13,6 @@
   "blurb": "ECKO BAZZ /UG/",
   "desc": ""
  },
- "2026-09-05|exit": {
-  "title": "VIIITO & John Sarkander",
-  "date": "2026-09-05",
-  "time": "20:00",
-  "venue": "exit",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/DbtQ8knNYLQ/",
-  "price": "",
-  "lineup": [],
-  "blurb": "VIIITO & John Sarkander",
-  "desc": ""
- },
  "2026-09-19|exit": {
   "title": "EXIT At The Castle",
   "date": "2026-09-19",
@@ -111,20 +97,6 @@
   "price": "",
   "lineup": [],
   "blurb": ">>> hackedepicciotto (DE) + effata (SWE/DE)",
-  "desc": ""
- },
- "2026-09-05|kabinet": {
-  "title": ">>> DEVIL MASTER (USA) + SOLOMONAR",
-  "date": "2026-09-05",
-  "time": "20:00",
-  "venue": "kabinet",
-  "genres": [
-   "RAVE"
-  ],
-  "ticket": "https://www.instagram.com/p/DcNtZboj9Yu/",
-  "price": "",
-  "lineup": [],
-  "blurb": ">>> DEVIL MASTER (USA) + SOLOMONAR",
   "desc": ""
  }
 }
