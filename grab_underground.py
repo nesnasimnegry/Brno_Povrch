@@ -41,6 +41,8 @@ g.VENUE_MAP = {
     "exit club": "exit", "exit": "exit",
     "industra": "industra",
     "skleněná louka": "sklenka",
+    "fraktal": "fraktal",
+    "pul.pit": "pulpit", "pulpit": "pulpit",
 }
 g.MODE = "underground"
 g.ID_PREFIX = "u"
@@ -209,7 +211,8 @@ def fetch_exit(today):
 # Spolehlivý CLOUD zdroj bez klíče a bez IG-blokování — pokrývá kluby, co dřív jely
 # jen přes křehký IG (Artbar, Perpetuum). Jedno místo = /mista/<id>. Čas v RDFa je UTC.
 SMSTICKET_BASE = "https://www.smsticket.cz"
-SMSTICKET_VENUES = [("1856", "artbar"), ("933", "perpetuum")]   # (smsticket id, venue v appce)
+SMSTICKET_VENUES = [("1856", "artbar"), ("933", "perpetuum"),
+                    ("3141", "sibir")]         # sibir = jediný IG-nezávislý zdroj (public kluby řeší GoOut/POVRCH)
 _MUSIC_EVENT = re.compile(r"MusicEvent")
 
 
@@ -1094,6 +1097,77 @@ def fetch_instagram(today, dry_run=False, only=None):
     return list(cache.values())
 
 
+# ------------------------------------------------------------------ Industra
+INDUSTRA_URL = "https://industra.space/"
+# Industra je i galerie/kavárna → bereme jen hudební/klubové akce (keyword filtr).
+_INDUSTRA_MUSIC = re.compile(
+    r"koncert|dj|rave|párty|party|techno|house|hip.?hop|bass|klub|dnb|drum|"
+    r"elektro|punk|rock|jazz|hudb|live|noc|sound|beat|disco", re.I)
+
+
+def fetch_industra(today):
+    """Industra (industra.space): homepage → odkazy na akce → JSON-LD Event z detailu.
+    Keyword filtr proti výstavám. Cloud, zdarma. Resilience: pád jen zaloguje."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
+    tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    try:
+        r = requests.get(INDUSTRA_URL, headers=g.UA, timeout=30)
+        r.raise_for_status()
+        r.encoding = "utf-8"
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as e:
+        print(f"[warn] Industra nešel načíst: {e}", file=sys.stderr)
+        g.WARNINGS.append(f"Industra nešel načíst: {e}")
+        return out
+    links = []
+    for a in soup.select("div.programItem a[href]"):
+        href = a.get("href") or ""
+        if href and href not in links:
+            links.append(href)
+    for href in links[:40]:
+        try:
+            url = href if href.startswith("http") else "https://industra.space" + ("" if href.startswith("/") else "/") + href
+            rd = requests.get(url, headers=g.UA, timeout=30)
+            rd.raise_for_status()
+            rd.encoding = "utf-8"
+            ds = BeautifulSoup(rd.text, "html.parser")
+            node = None
+            for blk in ds.find_all("script", type="application/ld+json"):
+                try:
+                    j = json.loads(blk.string or "", strict=False)   # JSON-LD mívá syrové \n ve stringu
+                except Exception:
+                    continue
+                for nd in (j if isinstance(j, list) else [j]):
+                    _t = nd.get("@type") if isinstance(nd, dict) else None
+                    if any(str(x).endswith("Event") for x in (_t if isinstance(_t, list) else [_t])):
+                        node = nd
+                        break
+                if node:
+                    break
+            if not node:
+                continue
+            title = (node.get("name") or "").strip()
+            mm = re.match(r"(\d{4}-\d\d-\d\d)", node.get("startDate") or "")
+            if not title or not mm:
+                continue
+            date = mm.group(1)
+            desc = node.get("description") or ""
+            if not (tmin <= date <= tmax) or not _INDUSTRA_MUSIC.search(title + " " + desc):
+                continue
+            tm = re.search(r"T([0-2]\d):([0-5]\d)", node.get("startDate") or "")
+            ev = {"title": title, "date": date, "time": f"{tm.group(1)}:{tm.group(2)}" if tm else "20:00",
+                  "venue": "industra", "genres": g.genre_for(title + " " + desc[:120], "koncert"),
+                  "ticket": url, "price": "", "lineup": [], "blurb": title[:90], "desc": ""}
+            if _key(ev) in seen:
+                continue
+            seen.add(_key(ev))
+            out.append(ev)
+        except Exception as ex:
+            print(f"[warn] Industra detail přeskočen ({type(ex).__name__})", file=sys.stderr)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -1107,10 +1181,13 @@ def main():
         titles_by_date.setdefault(e["date"], []).append(e["title"])
     merged = list(goout)
     counts = []
+    raw = {}                     # název zdroje -> počet akcí PŘED dedupem (pro self-monitoring)
     for name, src in [("Kabinet", fetch_kabinet(today)), ("Alterna", fetch_alterna(today)),
                       ("Exit", fetch_exit(today)), ("smsticket", fetch_smsticket(today)),
                       ("RA", fetch_ra(today)), ("koncertbrno", fetch_koncertbrno(today)),
+                      ("Industra", fetch_industra(today)),
                       ("Instagram", fetch_instagram(today, args.dry_run))]:
+        raw[name] = len(src)
         c = 0
         for e in src:
             # Duplikát vůči už zařazeným? Fuzzy název NEBO stejné místo+den. GoOut má přednost.
@@ -1122,6 +1199,13 @@ def main():
             merged.append(e)
             c += 1
         counts.append(f"{name}: +{c}")
+    # Self-monitoring klubových webů: 0 akcí u jednoho klubu, zatímco ostatní kluby
+    # akce MAJÍ = pravděpodobně změna webu/selektorů (ne off-season → to by bylo 0 u všech).
+    club_sites = ("Kabinet", "Alterna", "Exit")
+    if sum(raw.get(n, 0) for n in club_sites) > 0:
+        for n in club_sites:
+            if raw.get(n, 0) == 0:
+                g.WARNINGS.append(f"{n}: 0 akcí z webu, přitom jiné kluby akce mají — možná změna webu/selektorů")
     merged = sorted(merged, key=lambda e: e["date"])[:g.MAX_EVENTS]
     print(f"[info] GoOut: {len(goout)}, " + ", ".join(counts) + f" → celkem {len(merged)}")
     if not merged:

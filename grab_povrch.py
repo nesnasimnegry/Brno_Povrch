@@ -19,6 +19,7 @@ Když by po úpravě chybělo </html>, NIC neuloží.
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import sys
@@ -38,8 +39,8 @@ for _s in (sys.stdout, sys.stderr):
 GOOUT_BASE = "https://goout.net/cs/brno/akce/lezjyvlkk/"
 SONO_URL = "https://www.sono.cz/"    # Sono Music Club — server-rendered program (GoOut ho nepokrývá)
 INDEX_FILE = "public/index.html"
-WEEKS_AHEAD = 6
-MAX_EVENTS = 18
+WEEKS_AHEAD = 16   # horizont ~4 měsíce; near-term drží sorted[:MAX_EVENTS]
+MAX_EVENTS = 50
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 PRAGUE = ZoneInfo("Europe/Prague")
 
@@ -54,8 +55,8 @@ VENUE_MAP = {
     "metro music bar": "metro", "kc semilasso": "semilasso", "semilasso": "semilasso",
     "stará pekárna": "starapekarna", "cabaret des péchés": "cabaret",
     "zoner boby hall": "boby", "bobycentrum": "boby", "boby": "boby",
-    "two faces": "twofaces", "7. nebe": "sedmnebe", "caribic": "caribic",
-    "yacht": "yacht", "tabarin": "tabarin", "disco xxl": "discoxxl",
+    "two faces": "twofaces", "7. nebe": "sedmnebe",
+    "yacht": "yacht", "tabarin": "tabarin",
     "music lab": "musiclab", "pitkin": "pitkin", "charlie's hat": "charlieshat",
     "vn club": "vnclub", "leitner": "leitner", "typos": "typos",
     "amfiteátr řečkovice": "amfik", "amfiteátr kraví hora": "kravihora",
@@ -108,26 +109,39 @@ def event_genres(main_category, tags, title):
 
 
 def genre_for(title, category):
-    t = (title + " " + category).lower()
-    if any(k in t for k in ["techno", "house", "rave", "dnb", "drum and bass", "acid", "trance", "hardtek"]):
+    # Hranice slov (\b) proti falešným shodám: "rave" v "grave", "trance" v
+    # "entrance", "disco" v "discography" apod. METAL a ROCK mají vlastní tag
+    # (dřív padaly pod PUNK/INDIE).
+    t = " " + (title + " " + category).lower() + " "
+
+    def has(*words):
+        return any(re.search(r"\b" + re.escape(w) + r"\b", t) for w in words)
+
+    if has("techno", "house", "rave", "dnb", "drum and bass", "acid", "trance",
+           "hardtek", "electro", "electronic"):
         tags = ["RAVE"]
-        if "techno" in t:
+        if has("techno"):
             tags.append("TECHNO")
-        elif "house" in t:
+        elif has("house"):
             tags.append("HOUSE")
         return tags
-    if "part" in category.lower() or any(k in t for k in ["diskotéka", "disco", "párty", "open-air", "open air"]):
+    if "part" in category.lower() or has("diskotéka", "disco", "párty", "party",
+                                         "open-air", "open air"):
         return ["PÁRTY"]
     tags = ["KONCERT"]
-    if any(k in t for k in ["punk", "hardcore", "metal", "screamo", "grind", "noise"]):
+    if has("metal", "grind", "grindcore", "djent"):
+        tags.append("METAL")
+    elif has("punk", "hardcore", "screamo", "crust", "noise"):
         tags.append("PUNK")
-    elif "jazz" in t:
+    elif has("jazz", "swing", "blues"):
         tags.append("JAZZ")
-    elif any(k in t for k in ["indie", "alt ", "alternativ", "rock"]):
+    elif has("rock", "rockabilly", "garage", "post-rock"):
+        tags.append("ROCK")
+    elif has("indie", "alternativ", "shoegaze", "post-punk"):
         tags.append("INDIE")
-    elif any(k in t for k in ["folk", "písničkář", "country"]):
+    elif has("folk", "písničkář", "country"):
         tags.append("FOLK")
-    elif any(k in t for k in ["ambient", "drone", "experiment"]):
+    elif has("ambient", "drone", "experiment"):
         tags.append("AMBIENT")
     return tags
 
@@ -505,6 +519,9 @@ def write_alerts(dry_run):
                 af.write(f"  • {w}\n")
 
 
+_CANCEL_RE = re.compile(r"zruš|cancel|přelož|přesun|odvol", re.I)   # ZRUŠENO / přeloženo / …
+
+
 def fetch_sono(today):
     """Web Sono Music Clubu — server-rendered seznam akcí.
 
@@ -528,20 +545,24 @@ def fetch_sono(today):
         href = a.get("href", "").split("#")[0].split("?")[0]
         if not href or href in seen:
             continue
-        card, title, date = a, None, None
+        card, title, date, ctx = a, None, None, ""
         for _ in range(4):
             card = card.parent
             if card is None:
                 break
+            ctx = card.get_text(" ", strip=True)
             h = card.find(["h1", "h2", "h3", "h4"])
             if h and not title:
                 title = re.sub(r"\s+", " ", h.get_text(" ", strip=True)).strip()
-            m = date_re.search(card.get_text(" ", strip=True))
+            m = date_re.search(ctx)
             if m and not date:
                 date = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
             if title and date:
                 break
         if not title or not date or date < lo or date > hi:
+            continue
+        # zrušené/přeložené přeskoč; ctx kontroluj jen když je malý (jedna karta, ne seznam)
+        if _CANCEL_RE.search(title) or (len(ctx) < 300 and _CANCEL_RE.search(ctx)):
             continue
         seen.add(href)
         out.append({
@@ -549,6 +570,97 @@ def fetch_sono(today):
             "genres": genre_for(title, "koncert"),
             "ticket": href, "price": "", "lineup": [], "blurb": title[:90], "desc": "",
         })
+    return out
+
+
+CABARET_API = "https://www.cabaretdespeches.com/wp-json/wp/v2/program?per_page=100"
+
+
+def fetch_cabaret(today):
+    """Cabaret des Péchés — WordPress REST API. Datum akce je na KONCI title (DD.MM.YYYY),
+    čas API nemá → default 20:00. Cloud, zdarma, bez klíče. (Cabaret = POVRCH venue.)"""
+    from html import unescape
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=WEEKS_AHEAD)
+    lo, hi = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    try:
+        r = requests.get(CABARET_API, headers=UA, timeout=30)
+        r.raise_for_status()
+        items = r.json()
+    except Exception as e:
+        print(f"[warn] Cabaret API nešel načíst: {e}", file=sys.stderr)
+        WARNINGS.append(f"Cabaret des Péchés nešel načíst: {e}")
+        return out
+    for it in (items or []):
+        try:
+            raw = unescape(((it.get("title") or {}).get("rendered") or "").strip())
+            m = re.search(r"(\d{1,2})\.\s*(\d{1,2})\.\s*(20\d\d)", raw)
+            if not raw or not m:
+                continue
+            date = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            if not (lo <= date <= hi):
+                continue
+            title = raw.replace(m.group(0), "").strip(" -–—:·")
+            key = (date, title.lower()[:24])
+            if not title or key in seen:
+                continue
+            seen.add(key)
+            out.append({"title": title, "date": date, "time": "20:00", "venue": "cabaret",
+                        "genres": genre_for(title, "koncert"),
+                        "ticket": it.get("link") or "https://www.cabaretdespeches.com/",
+                        "price": "", "lineup": [], "blurb": title[:90], "desc": ""})
+        except Exception as ex:
+            print(f"[warn] Cabaret blok přeskočen ({type(ex).__name__})", file=sys.stderr)
+    return out
+
+
+EVENTLOOK_SITEMAP = "https://www.eventlook.cz/server-sitemap.xml"
+
+
+def fetch_eventlook_teepee(today):
+    """Teepee akce přes eventlook.cz: server-sitemap → slugy s 'teepee' → __NEXT_DATA__ JSON.
+    Teepee = POVRCH venue, nemá vlastní venue stránku → bereme přes jednotlivé akce."""
+    out, seen = [], set()
+    horizon = today + datetime.timedelta(weeks=WEEKS_AHEAD)
+    lo, hi = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
+    try:
+        r = requests.get(EVENTLOOK_SITEMAP, headers=UA, timeout=30)
+        r.raise_for_status()
+        r.encoding = "utf-8"
+    except Exception as e:
+        print(f"[warn] eventlook (Teepee) nešel načíst: {e}", file=sys.stderr)
+        WARNINGS.append(f"eventlook (Teepee) nešel načíst: {e}")
+        return out
+    urls = [u for u in re.findall(r"<loc>([^<]+)</loc>", r.text)
+            if "/udalosti/" in u and re.search(r"tee-?pee", u, re.I)]
+    for url in urls[:20]:
+        try:
+            rd = requests.get(url, headers=UA, timeout=30)
+            rd.raise_for_status()
+            rd.encoding = "utf-8"
+            mm2 = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', rd.text, re.S)
+            if not mm2:
+                continue
+            ev = ((json.loads(mm2.group(1)).get("props") or {}).get("pageProps") or {}).get("event") or {}
+            title = (ev.get("name") or ev.get("title") or "").strip()
+            sd = ev.get("startAt") or ev.get("startDate") or ev.get("date") or ev.get("dateFrom") or ""
+            md = re.search(r"(\d{4}-\d\d-\d\d)", sd)
+            if not title or not md:
+                continue
+            date = md.group(1)
+            if not (lo <= date <= hi):
+                continue
+            key = (date, title.lower()[:24])
+            if key in seen:
+                continue
+            seen.add(key)
+            tm = re.search(r"T([0-2]\d):([0-5]\d)", sd)
+            out.append({"title": title, "date": date,
+                        "time": f"{tm.group(1)}:{tm.group(2)}" if tm else "20:00",
+                        "venue": "teepee", "genres": genre_for(title, "koncert"), "ticket": url,
+                        "price": "", "lineup": [], "blurb": title[:90], "desc": ""})
+        except Exception as ex:
+            print(f"[warn] eventlook Teepee detail přeskočen ({type(ex).__name__})", file=sys.stderr)
     return out
 
 
@@ -564,17 +676,22 @@ def main():
     titles_by_date = {}
     for e in goout:
         titles_by_date.setdefault(e["date"], []).append(e["title"])
-    events, added = list(goout), 0
-    for e in fetch_sono(today):
-        if (e["date"], e["venue"]) in have_dv or \
-           any(_same_event(e["title"], t) for t in titles_by_date.get(e["date"], [])):
-            continue
-        have_dv.add((e["date"], e["venue"]))
-        titles_by_date.setdefault(e["date"], []).append(e["title"])
-        events.append(e)
-        added += 1
+    events = list(goout)
+    counts = []
+    for nm, src in [("Sono", fetch_sono(today)), ("Cabaret", fetch_cabaret(today)),
+                    ("Teepee", fetch_eventlook_teepee(today))]:
+        added = 0
+        for e in src:
+            if (e["date"], e["venue"]) in have_dv or \
+               any(_same_event(e["title"], t) for t in titles_by_date.get(e["date"], [])):
+                continue
+            have_dv.add((e["date"], e["venue"]))
+            titles_by_date.setdefault(e["date"], []).append(e["title"])
+            events.append(e)
+            added += 1
+        counts.append(f"{nm} +{added}")
     events = sorted(events, key=lambda e: e["date"])[:MAX_EVENTS]
-    print(f"[info] GoOut {len(goout)} + Sono +{added} → celkem {len(events)} akcí.")
+    print(f"[info] GoOut {len(goout)} + " + ", ".join(counts) + f" → celkem {len(events)} akcí.")
     if not events:
         print("[warn] 0 akcí v našich podnicích — uklidím prošlé auto-akce, budoucí nechám.")
     rc = update_index(events, args.dry_run)   # běží i při 0 akcí → úklid prošlých

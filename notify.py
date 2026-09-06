@@ -249,11 +249,13 @@ def main():
         return 0
     print(f"[info] {len(subs)} odběratelů.")
 
-    sent = 0
+    sent, attempted, wanted, delivered = 0, 0, set(), set()
     for sub in subs:
         matched = [e for e in new if matches(sub, e)]
         if not matched:
             continue
+        attempted += 1
+        wanted.update(e["key"] for e in matched)
         if args.dry_run:
             print(f"[dry-run] → {sub.get('email')}: {len(matched)} akcí "
                   f"({', '.join(e['title'][:28] for e in matched[:3])}…)")
@@ -261,15 +263,30 @@ def main():
             try:
                 send_mail(sub["email"], sub.get("token", ""), matched)
                 sent += 1
+                delivered.update(e["key"] for e in matched)
                 print(f"[ok] mail → {sub['email']} ({len(matched)} akcí)")
             except Exception as ex:
                 print(f"[error] mail {sub.get('email')} selhal: {ex}", file=sys.stderr)
 
     if not args.dry_run:
+        # Self-check: byly shody, ale NIC neodešlo → nejspíš spadlo SMTP → alert.
+        if attempted and sent == 0:
+            print("[error] 0 mailů odesláno, přitom byly shody — SMTP?", file=sys.stderr)
+            try:
+                with open("alert.txt", "a", encoding="utf-8") as af:
+                    af.write(f"  • notify: {attempted} odběratelů mělo shodu, "
+                             f"ale 0 mailů odesláno (SMTP selhalo?)\n")
+            except Exception:
+                pass
+        # Nedoručené (matchnuté, ale nikomu neodeslané) NEoznačuj jako oznámené —
+        # ať se příště zkusí znovu; zbytek (bez shody / doručené) zapiš.
+        undelivered = wanted - delivered
+        keep = [e["key"] for e in events if e["key"] not in undelivered]
         os.makedirs("data", exist_ok=True)
-        json.dump(sorted(e["key"] for e in events),
+        json.dump(sorted(keep),
                   open(ANNOUNCED_FILE, "w", encoding="utf-8"), ensure_ascii=False)
-        print(f"[ok] odesláno {sent} mailů; announced.json přepsán ({len(events)} klíčů).")
+        print(f"[ok] odesláno {sent} mailů; announced.json: {len(keep)} klíčů"
+              f" ({len(undelivered)} ponecháno na příště kvůli chybě).")
     return 0
 
 
