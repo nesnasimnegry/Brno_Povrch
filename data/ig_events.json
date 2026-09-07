@@ -13,20 +13,6 @@
   "blurb": "ECKO BAZZ /UG/",
   "desc": ""
  },
- "2026-09-19|exit": {
-  "title": "EXIT At The Castle",
-  "date": "2026-09-19",
-  "time": "20:00",
-  "venue": "exit",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/Dbpy66Ft7iU/",
-  "price": "",
-  "lineup": [],
-  "blurb": "EXIT At The Castle",
-  "desc": ""
- },
  "2026-09-14|kabinet": {
   "title": ">>> BÉTON ARMÉ (CAN) + REMDIK (SK)",
   "date": "2026-09-14",
@@ -40,49 +26,6 @@
   "price": "",
   "lineup": [],
   "blurb": ">>> BÉTON ARMÉ (CAN) + REMDIK (SK)",
-  "desc": ""
- },
- "2026-09-25|industra": {
-  "title": "v 17:00 venku před INDUSTROU",
-  "date": "2026-09-25",
-  "time": "17:00",
-  "venue": "industra",
-  "genres": [
-   "KONCERT"
-  ],
-  "ticket": "https://www.instagram.com/p/DbGd6HrDPS1/",
-  "price": "",
-  "lineup": [],
-  "blurb": "v 17:00 venku před INDUSTROU",
-  "desc": ""
- },
- "2026-09-11|exit": {
-  "title": "Kompletní obsazení pro techno edici EXIT At The Castle je venku! ✊",
-  "date": "2026-09-11",
-  "time": "20:00",
-  "venue": "exit",
-  "genres": [
-   "RAVE",
-   "TECHNO"
-  ],
-  "ticket": "https://www.instagram.com/p/DcLTuRKNIKa/",
-  "price": "",
-  "lineup": [],
-  "blurb": "Kompletní obsazení pro techno edici EXIT At The Castle je venku! ✊",
-  "desc": ""
- },
- "2026-09-12|exit": {
-  "title": "EXIT At The Castle",
-  "date": "2026-09-12",
-  "time": "20:00",
-  "venue": "exit",
-  "genres": [
-   "RAVE"
-  ],
-  "ticket": "https://www.instagram.com/p/DcS209EtaWb/",
-  "price": "",
-  "lineup": [],
-  "blurb": "EXIT At The Castle",
   "desc": ""
  },
  "2026-09-16|kabinet": {
