@@ -54,9 +54,10 @@ EXIT_URL = "https://www.exitclubbrno.cz/"
 
 # Exit promuje i open-airy jinde — místo odhadni z názvu:
 EXIT_VENUE_HINTS = [
-    (r"valtice", None),                                    # mimo Brno -> přeskočit
-    (r"špilberk|na hrad|at the castle|spilas", "spilberk"),
+    (r"valtice|litomy[šs]l", None),                        # jednoznačně mimo Brno -> přeskočit
+    (r"špilberk|spilberk|na hrad|spilas", "spilberk"),     # "At The Castle | Špilberk" = zámek v Brně
     (r"\bboby\b|bobyhall", "boby"),
+    (r"at the castle", None),                              # "At The Castle" bez Špilberku = mimo Brno
 ]
 
 
@@ -211,8 +212,10 @@ def fetch_exit(today):
 # Spolehlivý CLOUD zdroj bez klíče a bez IG-blokování — pokrývá kluby, co dřív jely
 # jen přes křehký IG (Artbar, Perpetuum). Jedno místo = /mista/<id>. Čas v RDFa je UTC.
 SMSTICKET_BASE = "https://www.smsticket.cz"
-SMSTICKET_VENUES = [("1856", "artbar"), ("933", "perpetuum"),
-                    ("3141", "sibir")]         # sibir = jediný IG-nezávislý zdroj (public kluby řeší GoOut/POVRCH)
+# (kind, id, venue): "mista" = stránka místa, "skupiny" = festival/skupina akcí (víc dní na 1 URL)
+SMSTICKET_VENUES = [("mista", "1856", "artbar"), ("mista", "933", "perpetuum"),
+                    ("mista", "3141", "sibir"),          # sibir = jediný IG-nezávislý klub (public řeší GoOut/POVRCH)
+                    ("skupiny", "808", "spilberk")]      # EXIT At The Castle – Špilberk (Brno); roční festival, ID se může měnit
 _MUSIC_EVENT = re.compile(r"MusicEvent")
 
 
@@ -233,8 +236,8 @@ def fetch_smsticket(today):
     horizon = today + datetime.timedelta(weeks=g.WEEKS_AHEAD)
     tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
     ok_pages, total_blocks = 0, 0
-    for vid, venue in SMSTICKET_VENUES:
-        url = f"{SMSTICKET_BASE}/mista/{vid}"
+    for kind, sid, venue in SMSTICKET_VENUES:
+        url = f"{SMSTICKET_BASE}/{kind}/{sid}"
         try:
             r = requests.get(url, headers=g.UA, timeout=30)
             r.raise_for_status()
@@ -497,7 +500,7 @@ IG_ACCOUNTS = {
     "klub_alterna": "alterna",
     "artbar.club": "artbar",
     "exitclubbrno": "exit",
-    "exitevents_cz": "exit",
+    "exitevents_cz": None,   # festivalový promotér (EXIT At The Castle = Litomyšl) — NE brněnský klub
     "kabinet_muz": "kabinet",
     "industrabrno": "industra",
     "pul.pit": "pulpit",
@@ -549,6 +552,18 @@ _LABEL = re.compile(r"^(vstup|line[\s-]?up|kdy\b|kde\b|cena|info|l[íi]stky|tick
 _HAS_CAPS = re.compile(r"[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{3,}")
 _FILLER = re.compile(r"\b(se|si|na|nás|v|ve|u|za|je|jsou|by|bude|budem|máme|máte|může[šs]|"
                      r"těšit|info|najde|odkaz|biu|bio|tento|tomto|dnes|zítra|už|také|chce[šs]|přij[ďd])\b", re.I)
+# akce MIMO Brno — promotéři/kluby občas cross-postují festivaly jinde. "v Praze/Ostravě…"
+# = místo konání; "z Prahy" (původ kapely) schválně NEblokujeme. Špilberk = zámek v BRNĚ →
+# proto "at the castle" JE v _OUT_OF_BRNO (IG/promo bez místa), ale NE v _OUT_OF_CITY (centrální
+# pojistka nad názvy, kde "…| Hrad Špilberk" musí projít). Testuje se na _strip (bez diakritiky).
+_OTHER_CITY = (r"litomysl|\bvaltic|\bve?\s+(praze|ostrave|olomouci|plzni|liberci|zline|"
+               r"pardubicich|budejovicich|jihlave|hradci|kromerizi|mikulove|karlovych varech)\b")
+_OUT_OF_CITY = re.compile(_OTHER_CITY)                         # jen jiné město (Špilberk projde)
+_OUT_OF_BRNO = re.compile(r"at the castle|" + _OTHER_CITY)     # + holé "at the castle" (IG/promo)
+# meta-post: jen OZNÁMENÍ line-upu/programu, ne akce s datem ("obsazení je venku", "line-up zveřejněn")
+_ANNOUNCEMENT = re.compile(
+    r"(line[\s\-]?up|obsazen[ií]|program|hlavn[ií]\s+jm[ée]na)\b.{0,40}"
+    r"\b(je\s+)?(venku|zve[řr]ejn|ozn[aá]m|vyhla[šs]|odhal)", re.I)
 
 
 def _ig_venue(text, default):
@@ -592,6 +607,8 @@ def _ig_title(text):
         seg = re.split(r"\s[–—|→➜»•·>]\s|\s-\s|\s/\s|:\s", ln, 1)[0].strip()
         seg = re.sub(r"^(od\s+)?(\d{1,2}\.\s*\d{1,2}\.\s*(20\d\d)?|\d{1,2}[:h]\d{2})[\s–—-]*", "",
                      seg, flags=re.I).strip()
+        if re.match(r"^(v|ve|na|u|p[řr]ed|za|od|do|po|k|ke)\s+\d", seg, re.I):
+            continue                                        # „v 17:00 …" = útržek popisku, ne název
         if not (4 <= len(seg) <= 70) or _GREET.match(seg) or _LABEL.match(seg):
             continue
         # jméno akce/kapely: buď VELKÁ PÍSMENA, nebo krátké bez výplňových slov (ne věta)
@@ -655,6 +672,10 @@ def _parse_ig_caption(text, default_venue, today, horizon, post_date=None):
     if dt < today or dt > horizon:
         return None, "out-of-range"
     # ---- QUALITY GATE: musí to vypadat jako akce, mít místo i čistý název ----
+    if _OUT_OF_BRNO.search(_strip(text)):
+        return None, "out-of-brno"        # festival/akce mimo Brno (EXIT At The Castle = Litomyšl)
+    if _ANNOUNCEMENT.search(text):
+        return None, "announcement"       # jen oznámení line-upu, ne akce s datem
     if _LOGISTICS.search(text):
         return None, "logistics"
     if not _EVENT_SIGNAL.search(text):
@@ -721,6 +742,8 @@ def _ai_validate_events(events, ctx_text, default_venue, today, horizon):
     known_set = set(_ai_known_venues())
     tmin, tmax = today.strftime("%Y-%m-%d"), horizon.strftime("%Y-%m-%d")
     mentioned = _ig_venues_all(ctx_text)
+    if _OUT_OF_BRNO.search(_strip(ctx_text or "")) or _ANNOUNCEMENT.search(ctx_text or ""):
+        return []                          # celý post je mimo Brno / jen oznámení line-upu
     out = []
     for it in events or []:
         if not isinstance(it, dict):
@@ -1206,6 +1229,11 @@ def main():
         for n in club_sites:
             if raw.get(n, 0) == 0:
                 g.WARNINGS.append(f"{n}: 0 akcí z webu, přitom jiné kluby akce mají — možná změna webu/selektorů")
+    # centrální pojistka: zahoď akce mimo Brno (jiné město v názvu) bez ohledu na zdroj
+    before = len(merged)
+    merged = [e for e in merged if not _OUT_OF_CITY.search(_strip(e.get("title", "")))]
+    if len(merged) < before:
+        print(f"[info] mimo Brno odfiltrováno (jiné město v názvu): {before - len(merged)}")
     merged = sorted(merged, key=lambda e: e["date"])[:g.MAX_EVENTS]
     print(f"[info] GoOut: {len(goout)}, " + ", ".join(counts) + f" → celkem {len(merged)}")
     if not merged:
